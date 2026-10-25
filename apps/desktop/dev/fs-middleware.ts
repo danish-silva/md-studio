@@ -11,6 +11,7 @@
 import { watch, type FSWatcher } from 'chokidar';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import trash from 'trash';
@@ -270,6 +271,39 @@ async function dispatch(
       return { stat: await statOf(to) };
     }
 
+    case '/config': {
+      const name = configName(url.searchParams.get('name'));
+      const file = path.join(configDir(), name);
+
+      if (req.method === 'POST') {
+        await fs.mkdir(path.dirname(file), { recursive: true });
+        const text = (await readBinaryBody(req)).toString('utf8');
+        const temp = `${file}.${String(process.pid)}.tmp`;
+        // Same atomic write as documents: a crash must not leave half a workspace.
+        await fs.writeFile(temp, text, 'utf8');
+        await fs.rename(temp, file);
+        return { ok: true };
+      }
+
+      const text = await fs.readFile(file, 'utf8').catch(() => null);
+      return { text };
+    }
+
+    case '/config/list': {
+      const prefix = url.searchParams.get('prefix') ?? '';
+      const names = await fs
+        .readdir(configDir())
+        .catch(() => [] as string[])
+        .then((entries) => entries.filter((entry) => entry.startsWith(prefix)));
+      return { names };
+    }
+
+    case '/config/delete': {
+      const name = configName(requireString(await readJsonBody(req), 'name'));
+      await fs.rm(path.join(configDir(), name), { force: true });
+      return { ok: true };
+    }
+
     case '/trash': {
       const target = requireAllowedPath(asString(await readJsonBody(req).then((b) => b['path'])), roots);
       // Deliberately never fs.rm: deleting from the explorer must be recoverable.
@@ -457,6 +491,24 @@ async function readBinaryBody(req: Connect.IncomingMessage): Promise<Buffer> {
     chunks.push(chunk as Buffer);
   }
   return Buffer.concat(chunks);
+}
+
+/**
+ * Where workspaces and drafts live in development.
+ *
+ * Deliberately outside the repository and clearly marked as dev, so it never collides
+ * with the real app-data directory Tauri will use in P9.
+ */
+function configDir(): string {
+  return process.env['MD_STUDIO_DEV_CONFIG'] ?? path.join(os.homedir(), '.md-studio-dev');
+}
+
+/** Config names are file names, never paths: no separators, no traversal. */
+function configName(candidate: string | null): string {
+  if (candidate === null || !/^[A-Za-z0-9._-]+$/.test(candidate) || candidate.includes('..')) {
+    throw new HttpError(400, `Not a valid config name: ${String(candidate)}`);
+  }
+  return candidate;
 }
 
 function asString(value: unknown): string | null {

@@ -29,6 +29,8 @@ function doc(path: string, overrides: Partial<OpenDocument> = {}): OpenDocument 
     conflict: null,
     pinned: false,
     savedText: '',
+    cursor: 0,
+    scrollTop: 0,
     lastActiveAt: 0,
     ...overrides,
   };

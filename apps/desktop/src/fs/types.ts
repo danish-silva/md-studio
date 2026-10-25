@@ -72,6 +72,15 @@ export interface FileSystemProvider {
 
   /** Subscribes to filesystem events under the roots; returns an unsubscribe function. */
   watch(listener: (event: WatchEvent) => void): () => void;
+
+  /**
+   * Small app-owned files — workspaces and drafts — kept outside the user's folders and
+   * addressed by name rather than path. Tauri's app-data directory replaces this in P9.
+   */
+  readConfig(name: string): Promise<string | null>;
+  writeConfig(name: string, text: string): Promise<void>;
+  deleteConfig(name: string): Promise<void>;
+  listConfigs(prefix: string): Promise<string[]>;
 }
 
 /** Thrown when a write is refused because the file changed underneath us. */

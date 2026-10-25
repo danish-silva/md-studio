@@ -16,7 +16,7 @@ import {
 } from '@md-studio/editor';
 import { docToMarkdown } from '@md-studio/markdown';
 import { Fragment, Slice } from 'prosemirror-model';
-import type { Command, EditorState } from 'prosemirror-state';
+import { TextSelection, type Command, type EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { storeImages } from '../lib/assets';
@@ -111,11 +111,25 @@ export function WysiwygPane({
     });
 
     view.current = editor;
+
+    // A fresh state starts where the document was left; a cached one already is there.
+    const remembered = useDocuments.getState().byPath[path.current];
+    if (!cached && remembered) {
+      restoreCaret(editor, remembered.cursor);
+      requestAnimationFrame(() => {
+        parent.scrollTop = remembered.scrollTop;
+      });
+    }
+
     setStatus(readStatus(editor.state));
     setTable(readTableStatus(editor.state));
     editor.focus();
 
     return () => {
+      useDocuments.getState().recordViewState(path.current, {
+        cursor: editor.state.selection.from,
+        scrollTop: parent.scrollTop,
+      });
       writeCachedState(documentKey, editor.state, docToMarkdown(editor.state.doc));
       editor.destroy();
       view.current = null;
@@ -191,4 +205,17 @@ export function WysiwygPane({
       <div ref={host} className="md-editor-host min-h-0 flex-1 overflow-y-auto" />
     </div>
   );
+}
+
+/** Positions shift when a file changes on disk, so a stale offset must not throw. */
+function restoreCaret(editor: EditorView, cursor: number): void {
+  if (cursor <= 0) return;
+  const limit = Math.max(1, editor.state.doc.content.size - 1);
+
+  try {
+    const at = editor.state.doc.resolve(Math.min(cursor, limit));
+    editor.dispatch(editor.state.tr.setSelection(TextSelection.near(at)));
+  } catch {
+    // Leave the caret where the document opened.
+  }
 }

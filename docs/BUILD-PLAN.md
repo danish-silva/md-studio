@@ -5,7 +5,8 @@ multi-root explorer, Arc-style vertical tabs, and restorable workspaces. Markdow
 always the source of truth; nothing is stored in a proprietary format.
 
 Status: P0 (scaffold), P1 (markdown core), P2 (WYSIWYG editor), P3 (tables and paste),
-P4 (explorer and watcher) and P5 (vertical tabs) complete. P6 is next.
+P4 (explorer and watcher), P5 (vertical tabs) and P6 (workspaces and restore) complete.
+P7 is next.
 
 ## 1. Locked decisions
 

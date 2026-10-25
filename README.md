@@ -36,9 +36,14 @@ a pinned zone above everything, the rest grouped under the workspace folder they
 to, drag to reorder, recently closed for one-click reopening, and auto-archiving of tabs
 left untouched. Switching tabs keeps each document's undo history.
 
-Workspaces and session restore (P6) are not built yet, so everything still starts empty.
+**P6 — workspaces and session restore.** Named workspaces remember their folders, open
+tabs (with pin state, view mode, caret and scroll), the active tab, the sidebar and the
+explorer's settings, and restore them on launch. Unsaved buffers are written separately as
+drafts and offered back after a crash — or after switching workspaces and returning.
+
 The Tauri shell lands in P9; until then the UI runs in a browser against a dev-only
-filesystem middleware.
+filesystem middleware, and workspaces live in `~/.md-studio-dev` (override with
+`MD_STUDIO_DEV_CONFIG`).
 
 ### Known gaps
 
@@ -46,8 +51,12 @@ filesystem middleware.
   Switching *tabs* does not.
 - Ctrl+Tab cycles tabs in the desktop build; a browser keeps that shortcut for itself, so
   Alt+Up and Alt+Down do the same thing.
-- Auto-archiving only has something to act on once sessions are restored (P6): until
-  then every tab is new each time the app starts.
+- Window size and position are not persisted. That is Tauri's job and arrives with the
+  shell in P9.
+- Switching workspaces with unsaved changes does not prompt. The draft is kept, and
+  coming back offers to restore it.
+- A tab whose file has since been deleted is dropped during restore, with a note saying
+  how many.
 - The formatted view serialises the whole document to markdown on every keystroke. That is
   comfortably fast at the sizes tested, and incremental serialisation can wait until it
   is not.

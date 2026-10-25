@@ -120,6 +120,32 @@ export const devHttpProvider: FileSystemProvider = {
     await post<{ path: string }>('/trash', { path: targetPath });
   },
 
+  async readConfig(name) {
+    const { text } = await request<{ text: string | null }>(
+      `/config?name=${encodeURIComponent(name)}`,
+    );
+    return text;
+  },
+
+  async writeConfig(name, text) {
+    await request<{ ok: boolean }>(`/config?name=${encodeURIComponent(name)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      body: text,
+    });
+  },
+
+  async deleteConfig(name) {
+    await post<{ ok: boolean }>('/config/delete', { name });
+  },
+
+  async listConfigs(prefix) {
+    const { names } = await request<{ names: string[] }>(
+      `/config/list?prefix=${encodeURIComponent(prefix)}`,
+    );
+    return names;
+  },
+
   watch(listener) {
     const source = new EventSource(`${BASE}/watch`);
 

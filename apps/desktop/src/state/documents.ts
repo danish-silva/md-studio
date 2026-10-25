@@ -30,6 +30,19 @@ export interface OpenDocument {
   conflict: FileStat | null;
   pinned: boolean;
   lastActiveAt: number;
+  /** Where the caret was, so reopening a document lands where it was left. */
+  cursor: number;
+  scrollTop: number;
+}
+
+/** The part of a document worth writing into a workspace file. */
+export interface TabSnapshot {
+  path: string;
+  pinned: boolean;
+  mode: EditorMode;
+  cursor: number;
+  scrollTop: number;
+  lastActiveAt: number;
 }
 
 export interface ClosedTab {
@@ -76,6 +89,10 @@ export interface DocumentsState {
   reorder: (source: string, target: string) => void;
 
   setText: (path: string, text: string) => void;
+  /** Replaces the buffer from outside the editor, e.g. restoring a recovered draft. */
+  replaceText: (path: string, text: string) => void;
+  recordViewState: (path: string, view: { cursor: number; scrollTop: number }) => void;
+  applySnapshot: (snapshot: TabSnapshot) => void;
   setMode: (path: string, mode: EditorMode) => void;
   toggleMode: () => void;
 
@@ -107,6 +124,19 @@ const watchSequence = new Map<string, number>();
 
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Documents the user closed, as opposed to ones that merely left the set when a
+ * workspace was swapped out. Only the former should have their drafts thrown away:
+ * switching workspaces must not quietly destroy unsaved work.
+ */
+const closedByUser = new Set<string>();
+
+export function takeClosedByUser(): string[] {
+  const paths = [...closedByUser];
+  closedByUser.clear();
+  return paths;
 }
 
 export const useDocuments = create<DocumentsState>((set, get) => ({
@@ -141,6 +171,8 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
         conflict: null,
         pinned: false,
         lastActiveAt: Date.now(),
+        cursor: 0,
+        scrollTop: 0,
       };
 
       set({
@@ -235,6 +267,45 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
     if (!doc || doc.text === text) return;
     // Undoing back to what is on disk leaves nothing to save.
     set({ byPath: { ...get().byPath, [path]: { ...doc, text, dirty: text !== doc.savedText } } });
+  },
+
+  replaceText: (path, text) => {
+    const doc = get().byPath[path];
+    if (!doc) return;
+    // The revision is what the editor keys its view off, so without bumping it the new
+    // text would sit in the store while the old one stayed on screen.
+    set({
+      byPath: {
+        ...get().byPath,
+        [path]: { ...doc, text, dirty: text !== doc.savedText, revision: ++loadCounter },
+      },
+    });
+  },
+
+  recordViewState: (path, view) => {
+    const doc = get().byPath[path];
+    if (!doc) return;
+    if (doc.cursor === view.cursor && doc.scrollTop === view.scrollTop) return;
+    // Deliberately not a user-visible change: it must not mark the document dirty.
+    set({ byPath: { ...get().byPath, [path]: { ...doc, ...view } } });
+  },
+
+  applySnapshot: (snapshot) => {
+    const doc = get().byPath[snapshot.path];
+    if (!doc) return;
+    set({
+      byPath: {
+        ...get().byPath,
+        [snapshot.path]: {
+          ...doc,
+          pinned: snapshot.pinned,
+          mode: snapshot.mode,
+          cursor: snapshot.cursor,
+          scrollTop: snapshot.scrollTop,
+          lastActiveAt: snapshot.lastActiveAt,
+        },
+      },
+    });
   },
 
   setMode: (path, mode) => {
@@ -408,6 +479,7 @@ function closeNow(path: string, set: Setter, get: Getter): void {
   const nextByPath = { ...byPath };
   delete nextByPath[path];
   dropCachedStates(path);
+  closedByUser.add(path);
 
   // Hand focus to the neighbour on the left, the way a tab strip does.
   const nextActive =

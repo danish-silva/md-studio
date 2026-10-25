@@ -9,9 +9,11 @@ import { WysiwygPane } from './components/WysiwygPane';
 import { fsProvider } from './fs';
 import { basename } from './lib/text';
 import { useDocuments } from './state/documents';
-import { useExplorer } from './state/explorer';
+import { DraftRecoveryBar } from './components/DraftRecoveryBar';
+import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { useLayout } from './state/layout';
 import { startWatching } from './state/watcher';
+import { useWorkspace } from './state/workspace';
 
 /** How often forgotten tabs are swept up. The threshold itself is in days. */
 const ARCHIVE_INTERVAL_MS = 5 * 60 * 1000;
@@ -23,12 +25,23 @@ export function App() {
   const busy = useDocuments((state) => state.busy);
   const error = useDocuments((state) => state.error);
 
+  const pendingDrafts = useWorkspace((state) => state.pendingDrafts);
+  const droppedTabs = useWorkspace((state) => state.droppedTabs);
+  const workspaceError = useWorkspace((state) => state.error);
+
   const sidebarWidth = useLayout((state) => state.sidebarWidth);
   const sidebarCollapsed = useLayout((state) => state.sidebarCollapsed);
 
   useEffect(() => {
-    void useExplorer.getState().init();
-    return startWatching();
+    // The workspace owns which folders are open, so it boots before anything reads them.
+    void useWorkspace.getState().boot();
+
+    const stopWatching = startWatching();
+    const stopAutosave = useWorkspace.getState().startAutosave();
+    return () => {
+      stopWatching();
+      stopAutosave();
+    };
   }, []);
 
   useEffect(() => {
@@ -93,6 +106,7 @@ export function App() {
               style={{ width: sidebarWidth }}
               className="flex shrink-0 flex-col overflow-hidden border-r border-[var(--app-border)] bg-[var(--app-panel)]"
             >
+              <WorkspaceSwitcher />
               <TabList />
               <div className="min-h-0 flex-1">
                 <Explorer />
@@ -133,6 +147,47 @@ export function App() {
               <button
                 type="button"
                 onClick={() => useDocuments.getState().clearError()}
+                className="rounded border border-[var(--app-border)] px-2 py-0.5"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {pendingDrafts.length > 0 && (
+            <DraftRecoveryBar
+              drafts={pendingDrafts}
+              onKeep={() => void useWorkspace.getState().resolveDrafts('keep')}
+              onDiscard={() => void useWorkspace.getState().resolveDrafts('discard')}
+            />
+          )}
+
+          {droppedTabs.length > 0 && (
+            <div className="flex shrink-0 items-center gap-3 border-b border-[var(--app-border)] px-4 py-1.5 text-xs text-[var(--app-muted)]">
+              <span className="min-w-0 flex-1 break-words">
+                {droppedTabs.length} tab{droppedTabs.length === 1 ? '' : 's'} could not be
+                reopened; {droppedTabs.length === 1 ? 'the file is' : 'those files are'} no
+                longer on disk.
+              </span>
+              <button
+                type="button"
+                onClick={() => useWorkspace.getState().dismissDropped()}
+                className="shrink-0 underline"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {workspaceError !== null && (
+            <div
+              role="alert"
+              className="flex shrink-0 items-center gap-3 border-b border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-200"
+            >
+              <span className="min-w-0 flex-1 break-words">{workspaceError}</span>
+              <button
+                type="button"
+                onClick={() => useWorkspace.getState().clearError()}
                 className="rounded border border-[var(--app-border)] px-2 py-0.5"
               >
                 Dismiss
@@ -201,6 +256,7 @@ export function App() {
               ) : (
                 <SourceEditor
                   documentKey={`${doc.path}::${doc.revision}::source`}
+                  documentPath={doc.path}
                   initialText={doc.text}
                   onChange={(text) => useDocuments.getState().setText(doc.path, text)}
                 />

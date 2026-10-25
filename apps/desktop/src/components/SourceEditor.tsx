@@ -5,6 +5,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { basicSetup } from 'codemirror';
 import { readCachedState, writeCachedState } from '../lib/editor-cache';
+import { useDocuments } from '../state/documents';
 
 const layout = EditorView.theme({
   '&': { height: '100%', fontSize: '14px' },
@@ -24,11 +25,12 @@ export interface SourceEditorProps {
    * the previous text on screen.
    */
   documentKey: string;
+  documentPath: string;
   initialText: string;
   onChange: (text: string) => void;
 }
 
-export function SourceEditor({ documentKey, initialText, onChange }: SourceEditorProps) {
+export function SourceEditor({ documentKey, documentPath, initialText, onChange }: SourceEditorProps) {
   const host = useRef<HTMLDivElement | null>(null);
   // Held in a ref so a new callback identity does not tear down the editor.
   const notify = useRef(onChange);
@@ -62,15 +64,27 @@ export function SourceEditor({ documentKey, initialText, onChange }: SourceEdito
           ],
         }),
     });
+    const remembered = useDocuments.getState().byPath[documentPath];
+    if (!cached && remembered && remembered.cursor > 0) {
+      const at = Math.min(remembered.cursor, view.state.doc.length);
+      view.dispatch({ selection: { anchor: at } });
+      requestAnimationFrame(() => {
+        view.scrollDOM.scrollTop = remembered.scrollTop;
+      });
+    }
     view.focus();
 
     return () => {
+      useDocuments.getState().recordViewState(documentPath, {
+        cursor: view.state.selection.main.head,
+        scrollTop: view.scrollDOM.scrollTop,
+      });
       writeCachedState(documentKey, view.state, view.state.doc.toString());
       view.destroy();
     };
     // initialText is the seed for this mount only; later edits flow through onChange.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documentKey]);
+  }, [documentKey, documentPath]);
 
   return <div ref={host} className="h-full overflow-hidden" />;
 }

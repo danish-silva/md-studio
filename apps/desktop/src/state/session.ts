@@ -43,6 +43,7 @@ export interface SessionState {
   toggleMode: () => void;
   save: (options?: { force?: boolean }) => Promise<void>;
   reloadFromDisk: () => Promise<void>;
+  reportError: (message: string) => void;
   clearError: () => void;
 }
 
@@ -155,6 +156,8 @@ export const useSession = create<SessionState>((set, get) => ({
     if (!doc) return;
     await get().openFile(doc.path);
   },
+
+  reportError: (message) => set({ error: message }),
 
   clearError: () => set({ error: null }),
 }));

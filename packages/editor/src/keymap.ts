@@ -3,6 +3,7 @@ import { undoInputRule } from 'prosemirror-inputrules';
 import { keymap } from 'prosemirror-keymap';
 import type { Command, Plugin } from 'prosemirror-state';
 import { commands, splitListItemCommand } from './commands.ts';
+import { goToNextCell } from './tables.ts';
 
 export interface KeymapOptions {
   /** Ctrl+K needs a URL, which only the UI can ask for. */
@@ -39,8 +40,9 @@ export function editorKeymap(options: KeymapOptions = {}): Plugin {
     'Mod- ': commands.clearFormatting,
     'Mod-Space': commands.clearFormatting,
 
-    Tab: commands.indent,
-    'Shift-Tab': commands.outdent,
+    // In a table Tab walks the cells, as a spreadsheet does; elsewhere it indents a list.
+    Tab: chainCommands(goToNextCell(1), commands.indent),
+    'Shift-Tab': chainCommands(goToNextCell(-1), commands.outdent),
 
     'Shift-Enter': commands.hardBreak,
     'Mod-Enter': commands.hardBreak,

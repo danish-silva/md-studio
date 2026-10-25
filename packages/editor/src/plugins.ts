@@ -8,24 +8,30 @@ import type { Node as PmNode } from 'prosemirror-model';
 import { EditorState, Selection, TextSelection, type Plugin } from 'prosemirror-state';
 import { markdownInputRules } from './input-rules.ts';
 import { editorKeymap, type KeymapOptions } from './keymap.ts';
+import { pastePlugin, type PasteOptions } from './paste.ts';
+import { tableAlignmentDecorations } from './tables.ts';
+
+export type EditorOptions = KeymapOptions & PasteOptions;
 
 /**
  * Order is precedence: our bindings get first refusal, then the input rules, then
  * ProseMirror's defaults. gapCursor is what lets the caret sit beside an atom such as a
  * raw block or a rule, so those are not traps.
  */
-export function createPlugins(options: KeymapOptions = {}): Plugin[] {
+export function createPlugins(options: EditorOptions = {}): Plugin[] {
   return [
     history(),
     editorKeymap(options),
     markdownInputRules(),
+    pastePlugin(options),
+    tableAlignmentDecorations(),
     keymap(baseKeymap),
     dropCursor({ color: 'var(--app-accent)', width: 2 }),
     gapCursor(),
   ];
 }
 
-export function createEditorState(markdown: string, options: KeymapOptions = {}): EditorState {
+export function createEditorState(markdown: string, options: EditorOptions = {}): EditorState {
   const doc = markdownToDoc(markdown);
   return EditorState.create({
     doc,

@@ -33,6 +33,14 @@ export interface WriteOptions {
   expectedMtimeMs?: number;
 }
 
+export interface AssetWrite {
+  /** Directory to write into; created if it does not exist. */
+  dir: string;
+  /** Preferred file name. The provider makes it unique and filesystem-safe. */
+  name: string;
+  data: ArrayBuffer;
+}
+
 export interface FileSystemProvider {
   readonly id: string;
   /** Directories this provider is permitted to reach. */
@@ -41,6 +49,8 @@ export interface FileSystemProvider {
   readFile(filePath: string): Promise<FileContents>;
   stat(targetPath: string): Promise<FileStat>;
   writeFile(filePath: string, text: string, options?: WriteOptions): Promise<FileStat>;
+  /** Writes binary data, returning the path actually used. */
+  writeAsset(asset: AssetWrite): Promise<FileStat>;
 }
 
 /** Thrown when a write is refused because the file changed underneath us. */

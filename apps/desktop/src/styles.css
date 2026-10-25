@@ -149,6 +149,11 @@ body {
   text-align: left;
 }
 
+/* Column alignment lives on the table node in GFM, so a decoration puts it on the cells. */
+.md-editor-host .ProseMirror .md-align-left { text-align: left; }
+.md-editor-host .ProseMirror .md-align-center { text-align: center; }
+.md-editor-host .ProseMirror .md-align-right { text-align: right; }
+
 .md-editor-host .ProseMirror img {
   max-width: 100%;
   border-radius: 4px;

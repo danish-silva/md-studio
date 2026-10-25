@@ -1,10 +1,12 @@
 import type { CommandName, EditorStatus } from '@md-studio/editor';
 import type { ReactNode } from 'react';
+import { TableGridPicker } from './TableGridPicker';
 
 export interface ToolbarProps {
   status: EditorStatus | null;
   onRun: (name: CommandName) => void;
   onLink: () => void;
+  onInsertTable: (rows: number, columns: number) => void;
 }
 
 interface ButtonProps {
@@ -76,7 +78,7 @@ function currentBlockValue(status: EditorStatus | null): string {
  * Deliberately absent: underline, font size, font family, text colour and alignment.
  * Markdown has no syntax for them and the toolbar never emits HTML.
  */
-export function Toolbar({ status, onRun, onLink }: ToolbarProps) {
+export function Toolbar({ status, onRun, onLink, onInsertTable }: ToolbarProps) {
   const blockValue = currentBlockValue(status);
   // A link needs something to attach to: selected text, or a link already under the caret.
   const linkEnabled = status !== null && (status.hasSelection || status.link !== null);
@@ -162,9 +164,11 @@ export function Toolbar({ status, onRun, onLink }: ToolbarProps) {
       <Button name="blockquote" label="Block quote" shortcut="Ctrl+Shift+." active={status?.inBlockquote} status={status} onRun={onRun}>
         ❝
       </Button>
-      <Button name="table" label="Insert table" status={status} onRun={onRun}>
-        ⊞
-      </Button>
+      <TableGridPicker
+        disabled={!(status?.can.table ?? false)}
+        reason={status?.reason.table}
+        onInsert={onInsertTable}
+      />
       <Button name="horizontalRule" label="Horizontal rule" status={status} onRun={onRun}>
         ―
       </Button>

@@ -5,6 +5,7 @@ import { schema as canonicalSchema } from './schema.ts';
 import { docToMdast } from './to-mdast.ts';
 
 export { parseMarkdown, serializeMarkdown, stringifyOptions } from './pipeline.ts';
+export { htmlToMarkdown } from './from-html.ts';
 export { schema } from './schema.ts';
 export { mdastToDoc, type FromMdastOptions } from './from-mdast.ts';
 export { docToMdast } from './to-mdast.ts';

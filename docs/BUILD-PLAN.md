@@ -4,7 +4,8 @@ A desktop markdown viewer/editor with a Word-like formatting surface, a VS Code-
 multi-root explorer, Arc-style vertical tabs, and restorable workspaces. Markdown text is
 always the source of truth; nothing is stored in a proprietary format.
 
-Status: P0 (scaffold), P1 (markdown core) and P2 (WYSIWYG editor) complete. P3 is next.
+Status: P0 (scaffold), P1 (markdown core), P2 (WYSIWYG editor) and P3 (tables and paste)
+complete. P4 is next.
 
 ## 1. Locked decisions
 
@@ -101,10 +102,20 @@ has no syntax for them and we are not emitting HTML.
 `/image`). **Input rules** so typing still works: `## ` → H2, `- ` → bullet, `1. ` →
 ordered, `> ` → quote, triple-backtick → code fence, `**x**` → bold, `---` → rule.
 
-**Tables** get first-class treatment: grid picker to insert, row/column handles,
-header-row toggle, per-column alignment buttons mapping to `:---` / `:--:` / `---:`,
-Tab to advance cells, CSV/TSV paste converted to a table, and automatic escaping of `|`
-inside cell text.
+**Tables** get first-class treatment: grid picker to insert, row and column tools,
+per-column alignment buttons mapping to `:---` / `:--:` / `---:`, Tab to advance cells,
+CSV/TSV paste converted to a table, and automatic escaping of `|` inside cell text.
+
+Built against our own schema rather than `prosemirror-tables`, which requires
+`colspan`/`rowspan`/`colwidth` attributes on cells and ships merge commands. GFM has no
+merged cells, so adopting that model would let the editor represent documents markdown
+cannot express — the failure this project exists to prevent. A GFM table is a plain
+rectangle with a mandatory header row and one alignment per column, so it is implemented
+directly.
+
+For the same reason there is **no header-row toggle**, which an earlier draft of this plan
+listed: every GFM table has a header row, so the first row always is one and cannot be
+deleted.
 
 **Paste and drop.** HTML pasted from Word or a browser is converted via `rehype-remark`
 into clean markdown. A pasted or dropped image is written into an `assets/` folder beside

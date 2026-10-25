@@ -121,6 +121,13 @@ async function dispatch(
       return { stat: await writeFile(await readJsonBody(req), roots) };
     }
 
+    case '/write-asset': {
+      if (req.method !== 'POST') {
+        throw new HttpError(405, 'Use POST to write an asset');
+      }
+      return { stat: await writeAsset(url, req, roots) };
+    }
+
     default:
       throw new HttpError(404, `Unknown filesystem route: ${route}`);
   }
@@ -211,6 +218,63 @@ async function writeFile(
   }
 
   return statOf(filePath);
+}
+
+/**
+ * Binary writes, for images pasted or dropped into a document. The directory is created
+ * if missing and the name is made unique, so two screenshots pasted in a row do not
+ * silently overwrite one another.
+ */
+async function writeAsset(
+  url: URL,
+  req: Connect.IncomingMessage,
+  roots: string[],
+): Promise<{ path: string; size: number; mtimeMs: number }> {
+  const dir = requireAllowedPath(url.searchParams.get('dir'), roots);
+  const name = safeAssetName(url.searchParams.get('name'));
+
+  const data = await readBinaryBody(req);
+  if (data.length === 0) {
+    throw new HttpError(400, 'Asset body was empty');
+  }
+
+  await fs.mkdir(dir, { recursive: true });
+  const target = await firstFreeName(dir, name);
+  await fs.writeFile(target, data);
+  return statOf(target);
+}
+
+function safeAssetName(raw: string | null): string {
+  const base = (raw ?? '').split(/[\\/]/).pop() ?? '';
+  const cleaned = base
+    .replace(/[^A-Za-z0-9._-]/g, '-')
+    .replace(/^[-.]+/, '')
+    .slice(0, 120);
+  return cleaned.length > 0 ? cleaned : 'image.png';
+}
+
+async function firstFreeName(dir: string, name: string): Promise<string> {
+  const dot = name.lastIndexOf('.');
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const extension = dot > 0 ? name.slice(dot) : '';
+
+  for (let attempt = 0; attempt < 1000; attempt += 1) {
+    const candidate = path.join(dir, attempt === 0 ? name : `${stem}-${attempt}${extension}`);
+    try {
+      await fs.access(candidate);
+    } catch {
+      return candidate;
+    }
+  }
+  throw new HttpError(409, `No free file name for ${name}`);
+}
+
+async function readBinaryBody(req: Connect.IncomingMessage): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(chunk as Buffer);
+  }
+  return Buffer.concat(chunks);
 }
 
 function requireAllowedPath(candidate: string | null, roots: string[]): string {

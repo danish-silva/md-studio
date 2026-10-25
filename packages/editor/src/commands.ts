@@ -11,6 +11,7 @@ import { redo, undo } from 'prosemirror-history';
 import { liftListItem, sinkListItem, splitListItem, wrapInList } from 'prosemirror-schema-list';
 import { NodeSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
 import { findAncestor, isBlockActive, isTaskList, listItemPositions, markRangeAt } from './queries.ts';
+import { buildTable } from './tables.ts';
 import { marks, nodes, schema } from './schema-types.ts';
 
 /**
@@ -200,27 +201,6 @@ const insertHardBreak: Command = chainCommands(exitCode, (state, dispatch) => {
 
 export function insertTable(rows = 3, columns = 3): Command {
   return insertBlock(() => buildTable(rows, columns));
-}
-
-function buildTable(rows: number, columns: number) {
-  const header = nodes.tableRow.create(
-    null,
-    Array.from({ length: columns }, () => nodes.tableHeader.createAndFill()).filter(isNode),
-  );
-  const body = Array.from({ length: Math.max(0, rows - 1) }, () =>
-    nodes.tableRow.create(
-      null,
-      Array.from({ length: columns }, () => nodes.tableCell.createAndFill()).filter(isNode),
-    ),
-  );
-  return nodes.table.create({ align: Array.from({ length: columns }, () => null) }, [
-    header,
-    ...body,
-  ]);
-}
-
-function isNode<T>(value: T | null): value is T {
-  return value !== null;
 }
 
 /**

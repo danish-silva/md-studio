@@ -21,19 +21,27 @@ come back byte-for-byte.
 toolbar, the shortcut map, markdown input rules, task checkboxes, and a per-document
 toggle between the formatted view and the markdown source.
 
-The real explorer (P4), vertical tabs (P5) and workspaces (P6) are not built yet. Tables
-get proper editing tools in P3. The Tauri shell lands in P9; until then the UI runs in a
-browser against a dev-only filesystem middleware.
+**P3 — tables and incoming content.** Row and column tools, per-column alignment, a grid
+picker, Tab between cells, HTML from Word and the web converted to markdown on paste,
+spreadsheet cells pasted as a table, and images written into an `assets/` folder beside
+the document.
 
-### Known gaps after P2
+The real explorer (P4), vertical tabs (P5) and workspaces (P6) are not built yet. The
+Tauri shell lands in P9; until then the UI runs in a browser against a dev-only
+filesystem middleware.
+
+### Known gaps
 
 - Switching between formatted and source view remounts the editor, which resets undo
   history for that document.
 - The formatted view serialises the whole document to markdown on every keystroke. That is
   comfortably fast at the sizes tested, and incremental serialisation can wait until it
   is not.
-- Column alignment round-trips through the file but is not yet shown in the formatted
-  view, and there are no row/column tools. Both are P3.
+- Pasted CSV is only recognised when nothing is quoted. Quoted CSV needs a real parser,
+  and guessing would mangle the paste silently, so it is pasted as plain text instead.
+- There is no header-row toggle, and the header row cannot be deleted: every GFM table
+  has one.
+- Images always go to `assets/` beside the document. The location is not configurable.
 
 ### What a save changes
 

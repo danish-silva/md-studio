@@ -100,6 +100,7 @@ export function App() {
               state.mode === 'wysiwyg' ? (
                 <WysiwygPane
                   documentKey={`${doc.path}::${doc.revision}::wysiwyg`}
+                  documentPath={doc.path}
                   initialMarkdown={doc.text}
                   onChange={state.setText}
                 />

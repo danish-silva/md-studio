@@ -72,4 +72,14 @@ export const devHttpProvider: FileSystemProvider = {
     });
     return stat;
   },
+
+  async writeAsset({ dir, name, data }) {
+    const query = `?dir=${encodeURIComponent(dir)}&name=${encodeURIComponent(name)}`;
+    const { stat } = await request<{ stat: FileStat }>(`/write-asset${query}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: data,
+    });
+    return stat;
+  },
 };

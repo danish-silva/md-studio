@@ -2,6 +2,8 @@ import { useDocuments } from './state/documents';
 import { useExplorer } from './state/explorer';
 import { useFind } from './state/find';
 import { useLayout } from './state/layout';
+import { useNavigate } from './state/navigate';
+import { expandTemplate, useSettings } from './state/settings';
 import { parentDir } from './lib/text';
 
 export interface AppCommand {
@@ -58,6 +60,17 @@ export function appCommands(): AppCommand[] {
       run: () => useLayout.getState().showSidebarPanel('problems'),
     },
     {
+      id: 'settings',
+      title: 'Open settings',
+      shortcut: 'Ctrl+,',
+      run: () => useLayout.getState().setSettingsOpen(true),
+    },
+    {
+      id: 'panel.frontmatter',
+      title: 'Show frontmatter fields',
+      run: () => useLayout.getState().showSidebarPanel('frontmatter'),
+    },
+    {
       id: 'sidebar',
       title: layout.sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar',
       shortcut: 'Ctrl+\\',
@@ -112,21 +125,60 @@ export function appCommands(): AppCommand[] {
     );
   }
 
+  if (hasDocument) {
+    commands.push(
+      documents.secondaryPath === null
+        ? {
+            id: 'split',
+            title: 'Split the editor',
+            run: () => useDocuments.getState().splitEditor(),
+          }
+        : {
+            id: 'unsplit',
+            title: 'Close the split',
+            run: () => useDocuments.getState().closeSplit(),
+          },
+    );
+
+    for (const template of useSettings.getState().templates) {
+      commands.push({
+        id: `template.insert.${template.id}`,
+        title: `Insert template: ${template.name}`,
+        run: () => useNavigate.getState().insertMarkdown(expandTemplate(template.body)),
+      });
+    }
+  }
+
   const folder = documents.activePath !== null ? parentDir(documents.activePath) : useExplorer.getState().roots[0] ?? null;
   if (folder !== null) {
     commands.push({
       id: 'newFile',
       title: 'New markdown file',
-      run: () => {
-        void (async () => {
-          const created = await useExplorer.getState().createFile(folder, untitledName());
-          if (created !== null) void useDocuments.getState().open(created);
-        })();
-      },
+      run: () => void createFrom(folder, ''),
     });
+
+    for (const template of useSettings.getState().templates) {
+      commands.push({
+        id: `template.new.${template.id}`,
+        title: `New file from template: ${template.name}`,
+        run: () => void createFrom(folder, expandTemplate(template.body)),
+      });
+    }
   }
 
   return commands;
+}
+
+async function createFrom(folder: string, body: string): Promise<void> {
+  const created = await useExplorer.getState().createFile(folder, untitledName());
+  if (created === null) return;
+
+  await useDocuments.getState().open(created);
+  if (body.length > 0) {
+    useDocuments.getState().replaceText(created, body);
+    // Written straight away, so the file on disk matches what is on screen.
+    await useDocuments.getState().save(created);
+  }
 }
 
 function untitledName(): string {

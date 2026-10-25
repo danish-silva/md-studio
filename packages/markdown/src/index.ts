@@ -7,6 +7,13 @@ import { docToMdast } from './to-mdast.ts';
 export { parseMarkdown, serializeMarkdown, stringifyOptions } from './pipeline.ts';
 export { htmlToMarkdown } from './from-html.ts';
 export { moveSection } from './sections.ts';
+export { documentStats, type DocumentStats } from './stats.ts';
+export {
+  readFrontmatter,
+  writeFrontmatter,
+  type FieldValue,
+  type Frontmatter,
+} from './frontmatter.ts';
 export {
   frontmatterProblems,
   lintMarkdown,

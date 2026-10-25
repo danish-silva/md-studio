@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import 'prosemirror-view/style/prosemirror.css';
 import 'prosemirror-gapcursor/style/gapcursor.css';
+import 'katex/dist/katex.min.css';
 import './styles.css';
 
 const container = document.getElementById('root');

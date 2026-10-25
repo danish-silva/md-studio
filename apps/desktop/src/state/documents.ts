@@ -65,10 +65,16 @@ export interface TabSections {
 const RECENTLY_CLOSED_LIMIT = 12;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+export type PaneId = 'primary' | 'secondary';
+
 export interface DocumentsState {
   order: string[];
   byPath: Record<string, OpenDocument>;
+  /** The document in the primary pane. */
   activePath: string | null;
+  /** The document in the second pane, or null when the editor is not split. */
+  secondaryPath: string | null;
+  focusedPane: PaneId;
   recentlyClosed: ClosedTab[];
   /** 0 disables archiving. */
   autoArchiveDays: number;
@@ -79,6 +85,9 @@ export interface DocumentsState {
 
   open: (path: string) => Promise<void>;
   activate: (path: string) => void;
+  splitEditor: () => void;
+  closeSplit: () => void;
+  focusPane: (pane: PaneId) => void;
   activateRelative: (delta: 1 | -1) => void;
   requestClose: (path: string) => void;
   resolveClose: (action: 'save' | 'discard' | 'cancel') => void;
@@ -143,6 +152,8 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
   order: [],
   byPath: {},
   activePath: null,
+  secondaryPath: null,
+  focusedPane: 'primary',
   recentlyClosed: [],
   autoArchiveDays: 7,
   pendingClose: null,
@@ -178,9 +189,9 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
       set({
         byPath: { ...get().byPath, [doc.path]: doc },
         order: [...get().order.filter((entry) => entry !== doc.path), doc.path],
-        activePath: doc.path,
         recentlyClosed: get().recentlyClosed.filter((tab) => !samePath(tab.path, doc.path)),
         busy: false,
+        ...placeIn(get(), doc.path),
       });
     } catch (error) {
       set({ busy: false, error: describe(error) });
@@ -191,9 +202,31 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
     const doc = get().byPath[path];
     if (!doc) return;
     set({
-      activePath: path,
       byPath: { ...get().byPath, [path]: { ...doc, lastActiveAt: Date.now() } },
+      ...placeIn(get(), path),
     });
+  },
+
+  /**
+   * Splits with the neighbouring tab. The same document in both panes would mean two
+   * editors writing to one buffer, so it is not offered.
+   */
+  splitEditor: () => {
+    const { order, activePath, secondaryPath } = get();
+    if (secondaryPath !== null || order.length < 2) return;
+
+    const index = activePath === null ? -1 : order.indexOf(activePath);
+    const neighbour = order[index + 1] ?? order[index - 1];
+    if (neighbour === undefined) return;
+
+    set({ secondaryPath: neighbour, focusedPane: 'secondary' });
+  },
+
+  closeSplit: () => set({ secondaryPath: null, focusedPane: 'primary' }),
+
+  focusPane: (pane) => {
+    if (pane === 'secondary' && get().secondaryPath === null) return;
+    set({ focusedPane: pane });
   },
 
   activateRelative: (delta) => {
@@ -403,6 +436,7 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
       byPath,
       order: get().order.map((entry) => (entry === from ? to : entry)),
       activePath: get().activePath === from ? to : get().activePath,
+      secondaryPath: get().secondaryPath === from ? to : get().secondaryPath,
     });
   },
 
@@ -464,6 +498,16 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
 type Setter = (partial: Partial<DocumentsState>) => void;
 type Getter = () => DocumentsState;
 
+/** Puts a document in whichever pane has focus, never the same one in both. */
+function placeIn(state: DocumentsState, path: string): Partial<DocumentsState> {
+  if (state.focusedPane === 'secondary' && state.secondaryPath !== null) {
+    if (state.activePath === path) return { focusedPane: 'primary' };
+    return { secondaryPath: path };
+  }
+  if (state.secondaryPath === path) return { focusedPane: 'secondary' };
+  return { activePath: path, focusedPane: 'primary' };
+}
+
 function patch(set: Setter, get: Getter, path: string, changes: Partial<OpenDocument>): void {
   const doc = get().byPath[path];
   if (!doc) return;
@@ -476,6 +520,7 @@ function closeNow(path: string, set: Setter, get: Getter): void {
 
   const index = order.indexOf(path);
   const nextOrder = order.filter((entry) => entry !== path);
+  const secondary = get().secondaryPath === path ? null : get().secondaryPath;
   const nextByPath = { ...byPath };
   delete nextByPath[path];
   dropCachedStates(path);
@@ -488,7 +533,9 @@ function closeNow(path: string, set: Setter, get: Getter): void {
   set({
     order: nextOrder,
     byPath: nextByPath,
-    activePath: nextActive,
+    activePath: nextActive === secondary ? null : nextActive,
+    secondaryPath: secondary,
+    focusedPane: secondary === null ? 'primary' : get().focusedPane,
     recentlyClosed: [
       { path, closedAt: Date.now() },
       ...recentlyClosed.filter((tab) => !samePath(tab.path, path)),

@@ -47,9 +47,14 @@ replace across every folder, an outline panel whose entries can be dragged to mo
 sections, and a problems panel for broken frontmatter, broken relative links and a small
 set of lint rules.
 
+**P8 — settings and polish.** Light/dark/system themes with a configurable accent and
+editor font, optional autosave, focus and typewriter modes, spellcheck, a split editor,
+templates, frontmatter as a form, markdown-aware word count and reading time, and
+Mermaid/KaTeX rendering for fenced blocks.
+
 The Tauri shell lands in P9; until then the UI runs in a browser against a dev-only
-filesystem middleware, and workspaces live in `~/.md-studio-dev` (override with
-`MD_STUDIO_DEV_CONFIG`).
+filesystem middleware, and workspaces and settings live in `~/.md-studio-dev` (override
+with `MD_STUDIO_DEV_CONFIG`).
 
 ### Known gaps
 
@@ -79,7 +84,14 @@ filesystem middleware, and workspaces live in `~/.md-studio-dev` (override with
   reporting how many it skipped.
 - Clicking a search result opens the file and hands the query to the in-document find, so
   the match is highlighted wherever the caret lands.
-- Only one file is open at a time. Tabs arrive in P5.
+- Diagrams and maths render from fenced blocks (```mermaid, ```math) rather than new
+  syntax, so documents stay plain markdown and round-trip unchanged. Inline `$…$` maths
+  is deliberately not parsed: teaching the parser a new construct would change how every
+  file in the workspace is read.
+- The split editor shows two different documents. The same file in both panes would mean
+  two editors writing one buffer, so it is not offered.
+- The frontmatter form handles a flat set of fields. Nested YAML is shown as a reason to
+  edit it in source view rather than being flattened.
 - Adding a folder means typing or pasting its path, because a browser cannot offer a
   native folder picker. Tauri's dialog replaces that in P9.
 

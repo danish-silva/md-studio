@@ -5,8 +5,9 @@ multi-root explorer, Arc-style vertical tabs, and restorable workspaces. Markdow
 always the source of truth; nothing is stored in a proprietary format.
 
 Status: P0 (scaffold), P1 (markdown core), P2 (WYSIWYG editor), P3 (tables and paste),
-P4 (explorer and watcher), P5 (vertical tabs), P6 (workspaces and restore) and P7
-(palette, search, outline, problems) complete. P8 is next.
+P4 (explorer and watcher), P5 (vertical tabs), P6 (workspaces and restore), P7 (palette,
+search, outline, problems) and P8 (settings, themes, rendering) complete. P9 is next:
+the Tauri shell, which still needs the Rust toolchain installed.
 
 ## 1. Locked decisions
 

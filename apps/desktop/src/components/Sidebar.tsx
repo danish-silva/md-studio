@@ -1,4 +1,5 @@
 import { Explorer } from './Explorer';
+import { FrontmatterPanel } from './FrontmatterPanel';
 import { OutlinePanel } from './OutlinePanel';
 import { ProblemsPanel } from './ProblemsPanel';
 import { SearchPanel } from './SearchPanel';
@@ -11,6 +12,7 @@ const PANELS: { id: PanelId; label: string; title: string }[] = [
   { id: 'search', label: 'Search', title: 'Search all folders (Ctrl+Shift+F)' },
   { id: 'outline', label: 'Outline', title: 'Headings in this document' },
   { id: 'problems', label: 'Problems', title: 'Lint and link checks' },
+  { id: 'frontmatter', label: 'Fields', title: 'Frontmatter as a form' },
 ];
 
 export function Sidebar() {
@@ -49,6 +51,7 @@ export function Sidebar() {
         {panel === 'search' && <SearchPanel />}
         {panel === 'outline' && <OutlinePanel />}
         {panel === 'problems' && <ProblemsPanel />}
+        {panel === 'frontmatter' && <FrontmatterPanel />}
       </div>
     </div>
   );

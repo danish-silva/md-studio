@@ -6,6 +6,7 @@ import { history } from 'prosemirror-history';
 import { keymap } from 'prosemirror-keymap';
 import type { Node as PmNode } from 'prosemirror-model';
 import { EditorState, Selection, TextSelection, type Plugin } from 'prosemirror-state';
+import { activeBlockPlugin } from './focus.ts';
 import { markdownInputRules } from './input-rules.ts';
 import { editorKeymap, type KeymapOptions } from './keymap.ts';
 import { pastePlugin, type PasteOptions } from './paste.ts';
@@ -27,6 +28,7 @@ export function createPlugins(options: EditorOptions = {}): Plugin[] {
     pastePlugin(options),
     searchPlugin(),
     tableAlignmentDecorations(),
+    activeBlockPlugin(),
     keymap(baseKeymap),
     dropCursor({ color: 'var(--app-accent)', width: 2 }),
     gapCursor(),

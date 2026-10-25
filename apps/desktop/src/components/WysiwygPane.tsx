@@ -1,11 +1,13 @@
 import {
   commands,
   createEditorState,
+  insertMarkdown,
   moveSectionCommand,
   readSearch,
   replaceAllMatches,
   replaceCurrentMatch,
   revealHeading,
+  setFrontmatter,
   setSearchQuery,
   stepMatch,
   insertTable,
@@ -32,6 +34,8 @@ import { readCachedState, writeCachedState } from '../lib/editor-cache';
 import { useDocuments } from '../state/documents';
 import { useFind, type FindAction } from '../state/find';
 import { useNavigate } from '../state/navigate';
+import { useSettings } from '../state/settings';
+import { CodeBlockView } from './CodeBlockView';
 import { LinkBar } from './LinkBar';
 import { TableToolbar } from './TableToolbar';
 import { TaskItemView } from './TaskItemView';
@@ -106,6 +110,14 @@ export function WysiwygPane({
         }),
       nodeViews: {
         listItem: (node, editorView, getPos) => new TaskItemView(node, editorView, getPos),
+        codeBlock: (node) => {
+          const settings = useSettings.getState();
+          return new CodeBlockView(node, {
+            diagrams: settings.renderDiagrams,
+            math: settings.renderMath,
+            dark: document.documentElement.dataset['theme'] !== 'light',
+          });
+        },
       },
       dispatchTransaction(transaction) {
         const next = editor.state.apply(transaction);
@@ -119,6 +131,10 @@ export function WysiwygPane({
           current: search.current,
           error: search.error,
         });
+
+        if (useSettings.getState().typewriter && transaction.selectionSet) {
+          keepCaretCentred(editor, parent);
+        }
 
         if (transaction.docChanged) {
           // The store keeps markdown, not a document, so the file on disk is never a
@@ -143,10 +159,16 @@ export function WysiwygPane({
     setTable(readTableStatus(editor.state));
     editor.focus();
 
+    editor.dom.spellcheck = useSettings.getState().spellcheck;
+    const stopSpellcheck = useSettings.subscribe((settings) => {
+      editor.dom.spellcheck = settings.spellcheck;
+    });
+
     const stopFind = subscribeFind(editor);
     const stopNavigate = subscribeNavigate(editor);
 
     return () => {
+      stopSpellcheck();
       stopFind();
       stopNavigate();
       useDocuments.getState().recordViewState(path.current, {
@@ -230,6 +252,17 @@ export function WysiwygPane({
   );
 }
 
+/** Typewriter mode: hold the line being edited at the middle of the pane. */
+function keepCaretCentred(editor: EditorView, host: HTMLElement): void {
+  try {
+    const caret = editor.coordsAtPos(editor.state.selection.head);
+    const bounds = host.getBoundingClientRect();
+    host.scrollTop += caret.top - bounds.top - bounds.height / 2;
+  } catch {
+    // The position can be momentarily unmappable mid-transaction; skip this one.
+  }
+}
+
 function sameQuery(a: SearchQuery | null, b: SearchQuery | null): boolean {
   if (a === null || b === null) return a === b;
   return a.text === b.text && a.regex === b.regex && a.caseSensitive === b.caseSensitive;
@@ -295,8 +328,14 @@ function subscribeNavigate(editor: EditorView): () => void {
 
     if (request.kind === 'heading') {
       revealHeading(request.index)(editor.state, editor.dispatch);
-    } else {
+    } else if (request.kind === 'moveSection') {
       moveSectionCommand(request.from, request.to)(editor.state, editor.dispatch);
+    } else if (request.kind === 'frontmatter') {
+      // Deliberately no focus steal: the caret belongs in the form the user is typing in.
+      setFrontmatter(request.yaml)(editor.state, editor.dispatch);
+      return;
+    } else {
+      insertMarkdown(request.markdown)(editor.state, editor.dispatch);
     }
     editor.focus();
   });

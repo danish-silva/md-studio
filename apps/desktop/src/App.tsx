@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CommandPalette } from './components/CommandPalette';
-import { ConflictBar } from './components/ConflictBar';
+import { DraftRecoveryBar } from './components/DraftRecoveryBar';
+import { EditorPane } from './components/EditorPane';
 import { FindBar } from './components/FindBar';
+import { SettingsDialog } from './components/SettingsDialog';
 import { Sidebar } from './components/Sidebar';
-import { MissingFileBar } from './components/MissingFileBar';
-import { SourceEditor } from './components/SourceEditor';
 import { StatusBar } from './components/StatusBar';
-import { WysiwygPane } from './components/WysiwygPane';
 import { fsProvider } from './fs';
 import { basename } from './lib/text';
+import { applyTheme } from './lib/theme';
 import { useDocuments } from './state/documents';
-import { DraftRecoveryBar } from './components/DraftRecoveryBar';
 import { useFind } from './state/find';
 import { useLayout } from './state/layout';
+import { useSettings } from './state/settings';
 import { startWatching } from './state/watcher';
 import { useWorkspace } from './state/workspace';
 
@@ -20,8 +20,10 @@ import { useWorkspace } from './state/workspace';
 const ARCHIVE_INTERVAL_MS = 5 * 60 * 1000;
 
 export function App() {
-  const activePath = useDocuments((state) => state.activePath);
-  const doc = useDocuments((state) => (state.activePath === null ? null : state.byPath[state.activePath] ?? null));
+  const doc = useDocuments((state) =>
+    state.activePath === null ? null : (state.byPath[state.activePath] ?? null),
+  );
+  const secondaryPath = useDocuments((state) => state.secondaryPath);
   const pendingClose = useDocuments((state) => state.pendingClose);
   const busy = useDocuments((state) => state.busy);
   const error = useDocuments((state) => state.error);
@@ -30,13 +32,24 @@ export function App() {
   const droppedTabs = useWorkspace((state) => state.droppedTabs);
   const workspaceError = useWorkspace((state) => state.error);
 
+  const sidebarWidth = useLayout((state) => state.sidebarWidth);
+  const sidebarCollapsed = useLayout((state) => state.sidebarCollapsed);
+  const settingsOpen = useLayout((state) => state.settingsOpen);
+
   const findOpen = useFind((state) => state.open);
   const [palette, setPalette] = useState<string | null>(null);
 
-  const sidebarWidth = useLayout((state) => state.sidebarWidth);
-  const sidebarCollapsed = useLayout((state) => state.sidebarCollapsed);
+  const theme = useSettings((state) => state.theme);
+  const accent = useSettings((state) => state.accent);
+  const editorFont = useSettings((state) => state.editorFont);
+  const fontSize = useSettings((state) => state.fontSize);
 
   useEffect(() => {
+    void useSettings
+      .getState()
+      .load()
+      .then(() => applyTheme(useSettings.getState()));
+
     // The workspace owns which folders are open, so it boots before anything reads them.
     void useWorkspace.getState().boot();
 
@@ -49,10 +62,48 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const documents = useDocuments.getState();
-    documents.archiveStale();
+    applyTheme(useSettings.getState());
+  }, [theme, accent, editorFont, fontSize]);
+
+  // "Match the system" has to keep matching it.
+  useEffect(() => {
+    const query = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => {
+      if (useSettings.getState().theme === 'system') applyTheme(useSettings.getState());
+    };
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    useDocuments.getState().archiveStale();
     const timer = setInterval(() => useDocuments.getState().archiveStale(), ARCHIVE_INTERVAL_MS);
     return () => clearInterval(timer);
+  }, []);
+
+  // Autosave is opt-in, and saves every dirty document rather than only the one on
+  // screen: with a split editor, "the current one" is ambiguous.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const stop = useDocuments.subscribe(() => {
+      const { autosave, autosaveDelayMs } = useSettings.getState();
+      if (!autosave) return;
+
+      const documents = useDocuments.getState();
+      if (!documents.order.some((path) => documents.byPath[path]?.dirty === true)) return;
+
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        void useDocuments.getState().saveAll();
+      }, autosaveDelayMs);
+    });
+
+    return () => {
+      stop();
+      if (timer !== null) clearTimeout(timer);
+    };
   }, []);
 
   // Handled once, at the window, so they work wherever focus is and the browser's own
@@ -78,6 +129,11 @@ export function App() {
       if (event.key === 'Tab') {
         event.preventDefault();
         documents.activateRelative(event.shiftKey ? -1 : 1);
+        return;
+      }
+      if (event.key === ',') {
+        event.preventDefault();
+        useLayout.getState().setSettingsOpen(true);
         return;
       }
 
@@ -132,44 +188,7 @@ export function App() {
         )}
 
         <main className="flex min-w-0 flex-1 flex-col">
-          <header className="flex shrink-0 items-center gap-2 border-b border-[var(--app-border)] px-4 py-2">
-            <h1 className="truncate text-sm font-medium" title={doc?.path ?? ''}>
-              {doc ? basename(doc.path) : 'md-studio'}
-            </h1>
-            {doc?.dirty === true && (
-              <span
-                aria-label="Unsaved changes"
-                className="size-1.5 rounded-full bg-[var(--app-accent)]"
-              />
-            )}
-            <button
-              type="button"
-              disabled={doc === null}
-              onClick={() => useDocuments.getState().toggleMode()}
-              title="Toggle source mode (Ctrl+Shift+M)"
-              className="ml-auto rounded border border-[var(--app-border)] px-2 py-0.5 text-xs text-[var(--app-muted)] hover:bg-[var(--app-hover)] disabled:opacity-40"
-            >
-              {doc?.mode === 'source' ? 'Markdown source' : 'Formatted'}
-            </button>
-          </header>
-
           {findOpen && <FindBar />}
-
-          {error !== null && (
-            <div
-              role="alert"
-              className="flex shrink-0 items-center gap-3 border-b border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-200"
-            >
-              <span className="min-w-0 flex-1 break-words">{error}</span>
-              <button
-                type="button"
-                onClick={() => useDocuments.getState().clearError()}
-                className="rounded border border-[var(--app-border)] px-2 py-0.5"
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
 
           {pendingDrafts.length > 0 && (
             <DraftRecoveryBar
@@ -180,31 +199,24 @@ export function App() {
           )}
 
           {droppedTabs.length > 0 && (
-            <div className="flex shrink-0 items-center gap-3 border-b border-[var(--app-border)] px-4 py-1.5 text-xs text-[var(--app-muted)]">
-              <span className="min-w-0 flex-1 break-words">
-                {droppedTabs.length} tab{droppedTabs.length === 1 ? '' : 's'} could not be
-                reopened; {droppedTabs.length === 1 ? 'the file is' : 'those files are'} no
-                longer on disk.
-              </span>
-              <button
-                type="button"
-                onClick={() => useWorkspace.getState().dismissDropped()}
-                className="shrink-0 underline"
-              >
-                Dismiss
-              </button>
-            </div>
+            <Notice onDismiss={() => useWorkspace.getState().dismissDropped()}>
+              {droppedTabs.length} tab{droppedTabs.length === 1 ? '' : 's'} could not be reopened;{' '}
+              {droppedTabs.length === 1 ? 'the file is' : 'those files are'} no longer on disk.
+            </Notice>
           )}
 
-          {workspaceError !== null && (
+          {(error ?? workspaceError) !== null && (
             <div
               role="alert"
               className="flex shrink-0 items-center gap-3 border-b border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-200"
             >
-              <span className="min-w-0 flex-1 break-words">{workspaceError}</span>
+              <span className="min-w-0 flex-1 break-words">{error ?? workspaceError}</span>
               <button
                 type="button"
-                onClick={() => useWorkspace.getState().clearError()}
+                onClick={() => {
+                  useDocuments.getState().clearError();
+                  useWorkspace.getState().clearError();
+                }}
                 className="rounded border border-[var(--app-border)] px-2 py-0.5"
               >
                 Dismiss
@@ -244,44 +256,13 @@ export function App() {
             </div>
           )}
 
-          {doc?.missing === true && (
-            <MissingFileBar
-              name={basename(doc.path)}
-              dirty={doc.dirty}
-              onRecreate={() => void useDocuments.getState().save(doc.path, { force: true })}
-              onClose={() => useDocuments.getState().requestClose(doc.path)}
-            />
-          )}
-
-          {doc?.conflict != null && (
-            <ConflictBar
-              conflict={doc.conflict}
-              onReload={() => void useDocuments.getState().reloadFromDisk(doc.path)}
-              onOverwrite={() => void useDocuments.getState().save(doc.path, { force: true })}
-            />
-          )}
-
-          <div className="min-h-0 flex-1">
-            {doc && activePath !== null ? (
-              doc.mode === 'wysiwyg' ? (
-                <WysiwygPane
-                  documentKey={`${doc.path}::${doc.revision}::wysiwyg`}
-                  documentPath={doc.path}
-                  initialMarkdown={doc.text}
-                  onChange={(text) => useDocuments.getState().setText(doc.path, text)}
-                />
-              ) : (
-                <SourceEditor
-                  documentKey={`${doc.path}::${doc.revision}::source`}
-                  documentPath={doc.path}
-                  initialText={doc.text}
-                  onChange={(text) => useDocuments.getState().setText(doc.path, text)}
-                />
-              )
-            ) : (
-              <p className="p-8 text-sm text-[var(--app-muted)]">
-                Pick a markdown file from the explorer to start editing.
-              </p>
+          <div className="flex min-h-0 flex-1">
+            <EditorPane pane="primary" showPaneControls={secondaryPath !== null} />
+            {secondaryPath !== null && (
+              <>
+                <div className="w-px shrink-0 bg-[var(--app-border)]" />
+                <EditorPane pane="secondary" showPaneControls />
+              </>
             )}
           </div>
         </main>
@@ -292,11 +273,23 @@ export function App() {
       {palette !== null && (
         <CommandPalette initialValue={palette} onClose={() => setPalette(null)} />
       )}
+      {settingsOpen && <SettingsDialog onClose={() => useLayout.getState().setSettingsOpen(false)} />}
     </div>
   );
 }
 
-/** A drag handle rather than a CSS resize, so the width can be persisted in P6. */
+function Notice({ children, onDismiss }: { children: React.ReactNode; onDismiss: () => void }) {
+  return (
+    <div className="flex shrink-0 items-center gap-3 border-b border-[var(--app-border)] px-4 py-1.5 text-xs text-[var(--app-muted)]">
+      <span className="min-w-0 flex-1 break-words">{children}</span>
+      <button type="button" onClick={onDismiss} className="shrink-0 underline">
+        Dismiss
+      </button>
+    </div>
+  );
+}
+
+/** A drag handle rather than a CSS resize, so the width can be persisted. */
 function SidebarResizer() {
   const dragging = useRef(false);
 

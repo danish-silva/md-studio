@@ -5,10 +5,11 @@ import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { basicSetup } from 'codemirror';
 import { readCachedState, writeCachedState } from '../lib/editor-cache';
-import { moveSection, outlineOf } from '@md-studio/markdown';
+import { moveSection, outlineOf, writeFrontmatter } from '@md-studio/markdown';
+import { parse as parseYaml } from 'yaml';
 import { useDocuments } from '../state/documents';
 import { useFind, type FindAction } from '../state/find';
-import { useNavigate } from '../state/navigate';
+import { useNavigate, type NavigateRequest } from '../state/navigate';
 
 const layout = EditorView.theme({
   '&': { height: '100%', fontSize: '14px' },
@@ -205,6 +206,22 @@ function select(view: EditorView, match: Span | undefined): void {
   view.dispatch({ selection: { anchor: match.from, head: match.to }, scrollIntoView: true });
 }
 
+function rewrite(text: string, request: NavigateRequest): string | null {
+  if (request.kind === 'moveSection') {
+    return moveSection(text, request.from, request.to);
+  }
+  if (request.kind === 'frontmatter') {
+    try {
+      const parsed: unknown = request.yaml.trim().length === 0 ? {} : parseYaml(request.yaml);
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+      return writeFrontmatter(text, parsed as Record<string, never>);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 function subscribeNavigate(view: EditorView): () => void {
   let lastNonce = 0;
 
@@ -215,6 +232,13 @@ function subscribeNavigate(view: EditorView): () => void {
 
     const text = view.state.doc.toString();
 
+    if (request.kind === 'insertMarkdown') {
+      const at = view.state.selection.main;
+      view.dispatch({ changes: { from: at.from, to: at.to, insert: request.markdown } });
+      view.focus();
+      return;
+    }
+
     if (request.kind === 'heading') {
       const entry = outlineOf(text).find((candidate) => candidate.index === request.index);
       if (!entry) return;
@@ -224,10 +248,15 @@ function subscribeNavigate(view: EditorView): () => void {
       return;
     }
 
-    // Replacing the whole document in one transaction keeps the move undoable here too.
-    const next = moveSection(text, request.from, request.to);
-    if (next === text) return;
-    view.dispatch({ changes: { from: 0, to: text.length, insert: next } });
-    view.focus();
+    // Replacing the whole document in one transaction keeps these undoable here too.
+    const next = rewrite(text, request);
+    if (next === null || next === text) return;
+
+    const selection = Math.min(view.state.selection.main.head, next.length);
+    view.dispatch({
+      changes: { from: 0, to: text.length, insert: next },
+      selection: { anchor: selection },
+    });
+    if (request.kind !== 'frontmatter') view.focus();
   });
 }

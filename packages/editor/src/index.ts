@@ -34,6 +34,8 @@ export {
   type TableStatus,
 } from './tables.ts';
 export { markdownInputRules } from './input-rules.ts';
+export { activeBlockPlugin } from './focus.ts';
+export { insertMarkdown, setFrontmatter } from './frontmatter.ts';
 export { moveSectionCommand, revealHeading } from './outline.ts';
 export {
   readStatus,

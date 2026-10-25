@@ -41,7 +41,8 @@ body {
   padding: 2rem 1.5rem 40vh;
   outline: none;
   line-height: 1.7;
-  font-size: 0.95rem;
+  font-family: var(--app-font, inherit);
+  font-size: var(--app-font-size, 15px);
 }
 
 .md-editor-host .ProseMirror > * + * {
@@ -197,4 +198,42 @@ body {
 .md-editor-host .ProseMirror-selectednode {
   outline: 2px solid var(--app-accent);
   outline-offset: 2px;
+}
+
+/*
+ * Focus mode. The active block is marked by a plugin that always runs; only the dimming
+ * is conditional, so the mode can be toggled without rebuilding the editor.
+ */
+.md-focus .ProseMirror > * {
+  transition: opacity 120ms ease-out;
+  opacity: 0.32;
+}
+.md-focus .ProseMirror > .md-active-block {
+  opacity: 1;
+}
+
+/* Rendered output for ```mermaid and ```math fences, below the source. */
+.md-editor-host .ProseMirror .md-code-preview {
+  margin-top: 0.4em;
+  padding: 0.8em;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: var(--app-panel);
+  overflow-x: auto;
+  text-align: center;
+  user-select: none;
+}
+.md-editor-host .ProseMirror .md-code-preview:empty {
+  display: none;
+}
+.md-editor-host .ProseMirror .md-code-preview svg {
+  max-width: 100%;
+  height: auto;
+}
+.md-editor-host .ProseMirror .md-code-preview-error {
+  text-align: left;
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-size: 0.8em;
+  color: #f0a0a0;
+  white-space: pre-wrap;
 }

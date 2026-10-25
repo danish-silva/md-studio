@@ -13,9 +13,23 @@ See [docs/BUILD-PLAN.md](docs/BUILD-PLAN.md) for the full design and the phase s
 **P0 — scaffold.** The monorepo, the Vite UI, the development filesystem bridge, and
 opening, editing and saving a single file in source mode, with external-change detection.
 
+**P1 — markdown core.** `packages/markdown`: a pinned remark pipeline and a two-way bridge
+between mdast and a ProseMirror document, guarded by a golden corpus that asserts files
+come back byte-for-byte.
+
 The WYSIWYG editor (P2), the real explorer (P4), vertical tabs (P5) and workspaces (P6)
 are not built yet. The Tauri shell lands in P9; until then the UI runs in a browser against
 a dev-only filesystem middleware.
+
+### What a save changes
+
+Parsing and writing a file back is byte-identical when it is already in the canonical
+style. Otherwise the save normalises it — setext headings become ATX, `*` bullets become
+`-`, `__strong__` becomes `**strong**`, table cells are padded to their column width.
+`packages/markdown/test/fixtures/normalize` commits to exactly what those rewrites are.
+
+Anything the editor cannot model — raw HTML, footnote definitions, link reference
+definitions — is held verbatim and written back unchanged.
 
 ## Running it
 

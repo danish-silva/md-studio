@@ -1,16 +1,17 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { CommandPalette } from './components/CommandPalette';
 import { ConflictBar } from './components/ConflictBar';
-import { Explorer } from './components/Explorer';
+import { FindBar } from './components/FindBar';
+import { Sidebar } from './components/Sidebar';
 import { MissingFileBar } from './components/MissingFileBar';
 import { SourceEditor } from './components/SourceEditor';
 import { StatusBar } from './components/StatusBar';
-import { TabList } from './components/TabList';
 import { WysiwygPane } from './components/WysiwygPane';
 import { fsProvider } from './fs';
 import { basename } from './lib/text';
 import { useDocuments } from './state/documents';
 import { DraftRecoveryBar } from './components/DraftRecoveryBar';
-import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
+import { useFind } from './state/find';
 import { useLayout } from './state/layout';
 import { startWatching } from './state/watcher';
 import { useWorkspace } from './state/workspace';
@@ -28,6 +29,9 @@ export function App() {
   const pendingDrafts = useWorkspace((state) => state.pendingDrafts);
   const droppedTabs = useWorkspace((state) => state.droppedTabs);
   const workspaceError = useWorkspace((state) => state.error);
+
+  const findOpen = useFind((state) => state.open);
+  const [palette, setPalette] = useState<string | null>(null);
 
   const sidebarWidth = useLayout((state) => state.sidebarWidth);
   const sidebarCollapsed = useLayout((state) => state.sidebarCollapsed);
@@ -78,7 +82,22 @@ export function App() {
       }
 
       const key = event.key.toLowerCase();
-      if (key === 's') {
+      if (key === 'p') {
+        event.preventDefault();
+        setPalette(event.shiftKey ? '>' : '');
+      } else if (key === 'f' && event.shiftKey) {
+        event.preventDefault();
+        useLayout.getState().showSidebarPanel('search');
+      } else if (key === 'f') {
+        event.preventDefault();
+        useFind.getState().openFind(false);
+      } else if (key === 'h') {
+        event.preventDefault();
+        useFind.getState().openFind(true);
+      } else if (key === 'e' && event.shiftKey) {
+        event.preventDefault();
+        useLayout.getState().showSidebarPanel('files');
+      } else if (key === 's') {
         event.preventDefault();
         void (event.shiftKey ? documents.saveAll() : documents.save());
       } else if (key === 'w') {
@@ -106,11 +125,7 @@ export function App() {
               style={{ width: sidebarWidth }}
               className="flex shrink-0 flex-col overflow-hidden border-r border-[var(--app-border)] bg-[var(--app-panel)]"
             >
-              <WorkspaceSwitcher />
-              <TabList />
-              <div className="min-h-0 flex-1">
-                <Explorer />
-              </div>
+              <Sidebar />
             </aside>
             <SidebarResizer />
           </>
@@ -137,6 +152,8 @@ export function App() {
               {doc?.mode === 'source' ? 'Markdown source' : 'Formatted'}
             </button>
           </header>
+
+          {findOpen && <FindBar />}
 
           {error !== null && (
             <div
@@ -271,6 +288,10 @@ export function App() {
       </div>
 
       <StatusBar doc={doc} providerId={fsProvider.id} busy={busy} />
+
+      {palette !== null && (
+        <CommandPalette initialValue={palette} onClose={() => setPalette(null)} />
+      )}
     </div>
   );
 }

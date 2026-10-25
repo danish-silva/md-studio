@@ -271,6 +271,39 @@ async function dispatch(
       return { stat: await statOf(to) };
     }
 
+    case '/search/files': {
+      const limit = numberParam(url, 'limit', 2000);
+      const files: string[] = [];
+      for (const root of roots) {
+        await walkMarkdown(root, files, limit);
+      }
+      return { files };
+    }
+
+    case '/search/content': {
+      const query = url.searchParams.get('query') ?? '';
+      if (query.length === 0) return { matches: [], truncated: false };
+
+      const pattern = compilePattern(
+        query,
+        url.searchParams.get('regex') === '1',
+        url.searchParams.get('caseSensitive') === '1',
+      );
+      const limit = numberParam(url, 'limit', 500);
+
+      const files: string[] = [];
+      for (const root of roots) {
+        await walkMarkdown(root, files, 5000);
+      }
+
+      const matches: ContentMatch[] = [];
+      for (const file of files) {
+        if (matches.length >= limit) break;
+        await matchesIn(file, pattern, matches, limit);
+      }
+      return { matches, truncated: matches.length >= limit };
+    }
+
     case '/config': {
       const name = configName(url.searchParams.get('name'));
       const file = path.join(configDir(), name);
@@ -491,6 +524,83 @@ async function readBinaryBody(req: Connect.IncomingMessage): Promise<Buffer> {
     chunks.push(chunk as Buffer);
   }
   return Buffer.concat(chunks);
+}
+
+interface ContentMatch {
+  path: string;
+  line: number;
+  column: number;
+  length: number;
+  /** The whole line, for showing the match in context. */
+  preview: string;
+}
+
+function numberParam(url: URL, name: string, fallback: number): number {
+  const value = Number(url.searchParams.get(name));
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function compilePattern(query: string, regex: boolean, caseSensitive: boolean): RegExp {
+  const source = regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  try {
+    return new RegExp(source, caseSensitive ? 'g' : 'gi');
+  } catch (error) {
+    throw new HttpError(400, error instanceof Error ? error.message : 'Invalid pattern');
+  }
+}
+
+/**
+ * Walking happens here rather than in the browser: the UI only ever needs the answer,
+ * and shipping a whole folder tree across to filter it would be wasteful.
+ */
+async function walkMarkdown(dir: string, into: string[], limit: number): Promise<void> {
+  if (into.length >= limit) return;
+
+  const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    if (into.length >= limit) return;
+
+    const target = path.join(dir, entry.name);
+    if (IGNORED.test(target)) continue;
+
+    if (entry.isDirectory()) {
+      await walkMarkdown(target, into, limit);
+    } else if (entry.isFile() && /\.(md|markdown)$/i.test(entry.name)) {
+      into.push(target);
+    }
+  }
+}
+
+async function matchesIn(
+  file: string,
+  pattern: RegExp,
+  into: ContentMatch[],
+  limit: number,
+): Promise<void> {
+  const text = await fs.readFile(file, 'utf8').catch(() => null);
+  if (text === null) return;
+
+  const lines = text.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    pattern.lastIndex = 0;
+
+    let found: RegExpExecArray | null;
+    while ((found = pattern.exec(line)) !== null) {
+      if (found[0].length === 0) {
+        pattern.lastIndex += 1;
+        continue;
+      }
+      into.push({
+        path: file,
+        line: index + 1,
+        column: found.index + 1,
+        length: found[0].length,
+        preview: line.length > 400 ? `${line.slice(0, 400)}…` : line,
+      });
+      if (into.length >= limit) return;
+    }
+  }
 }
 
 /**

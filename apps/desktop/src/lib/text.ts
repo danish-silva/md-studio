@@ -57,3 +57,36 @@ export function parentDir(dirPath: string): string | null {
   const normalised = trimmed.length === 0 || /^[A-Za-z]:$/.test(trimmed) ? `${trimmed}/` : trimmed;
   return normalised === dirPath ? null : normalised;
 }
+
+/**
+ * Resolves a relative markdown link against the folder holding the document.
+ *
+ * Anchors and query strings are dropped, percent-escapes are decoded, and anything that
+ * climbs above the folder root returns null rather than a nonsense path.
+ */
+export function resolveRelative(dir: string, url: string): string | null {
+  const target = url.split('#')[0]?.split('?')[0] ?? '';
+  if (target.length === 0) return null;
+
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(target);
+  } catch {
+    decoded = target;
+  }
+
+  const separator = dir.includes('\\') ? '\\' : '/';
+  const base = dir.replace(/[\\/]+$/, '').split(/[\\/]/);
+
+  for (const segment of decoded.split('/')) {
+    if (segment === '' || segment === '.') continue;
+    if (segment === '..') {
+      if (base.length <= 1) return null;
+      base.pop();
+      continue;
+    }
+    base.push(segment);
+  }
+
+  return base.join(separator);
+}

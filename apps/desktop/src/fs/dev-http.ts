@@ -3,6 +3,7 @@ import {
   type DirEntry,
   type FileContents,
   type FileStat,
+  type ContentSearchResult,
   type FileSystemProvider,
   type WatchEvent,
   type WriteOptions,
@@ -118,6 +119,23 @@ export const devHttpProvider: FileSystemProvider = {
 
   async trash(targetPath) {
     await post<{ path: string }>('/trash', { path: targetPath });
+  },
+
+  async findFiles(limit = 2000) {
+    const { files } = await request<{ files: string[] }>(
+      `/search/files?limit=${String(limit)}`,
+    );
+    return files;
+  },
+
+  searchContent({ query, regex, caseSensitive, limit = 500 }) {
+    const params = new URLSearchParams({
+      query,
+      regex: regex ? '1' : '0',
+      caseSensitive: caseSensitive ? '1' : '0',
+      limit: String(limit),
+    });
+    return request<ContentSearchResult>(`/search/content?${params.toString()}`);
   },
 
   async readConfig(name) {

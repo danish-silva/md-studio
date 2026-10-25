@@ -5,7 +5,10 @@ import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { basicSetup } from 'codemirror';
 import { readCachedState, writeCachedState } from '../lib/editor-cache';
+import { moveSection, outlineOf } from '@md-studio/markdown';
 import { useDocuments } from '../state/documents';
+import { useFind, type FindAction } from '../state/find';
+import { useNavigate } from '../state/navigate';
 
 const layout = EditorView.theme({
   '&': { height: '100%', fontSize: '14px' },
@@ -74,7 +77,12 @@ export function SourceEditor({ documentKey, documentPath, initialText, onChange 
     }
     view.focus();
 
+    const stopFind = subscribeFind(view);
+    const stopNavigate = subscribeNavigate(view);
+
     return () => {
+      stopFind();
+      stopNavigate();
       useDocuments.getState().recordViewState(documentPath, {
         cursor: view.state.selection.main.head,
         scrollTop: view.scrollDOM.scrollTop,
@@ -87,4 +95,139 @@ export function SourceEditor({ documentKey, documentPath, initialText, onChange 
   }, [documentKey, documentPath]);
 
   return <div ref={host} className="h-full overflow-hidden" />;
+}
+
+interface Span {
+  from: number;
+  to: number;
+}
+
+function findMatches(text: string, query: string, regex: boolean, caseSensitive: boolean): Span[] {
+  const source = regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(source, caseSensitive ? 'g' : 'gi');
+
+  const spans: Span[] = [];
+  let found: RegExpExecArray | null;
+
+  while ((found = pattern.exec(text)) !== null) {
+    if (found[0].length === 0) {
+      pattern.lastIndex += 1;
+      continue;
+    }
+    spans.push({ from: found.index, to: found.index + found[0].length });
+  }
+  return spans;
+}
+
+/**
+ * The same find bar drives the source view, but through CodeMirror's own selection rather
+ * than decorations: basicSetup already highlights other occurrences of what is selected.
+ */
+function subscribeFind(view: EditorView): () => void {
+  let lastNonce = 0;
+  let current = -1;
+  let lastQuery = '';
+
+  const apply = () => {
+    const find = useFind.getState();
+
+    if (!find.open || find.query.length === 0) {
+      current = -1;
+      lastQuery = '';
+      find.report({ total: 0, current: -1, error: null });
+      return;
+    }
+
+    let matches: Span[] = [];
+    let error: string | null = null;
+    try {
+      matches = findMatches(view.state.doc.toString(), find.query, find.regex, find.caseSensitive);
+    } catch (problem) {
+      error = problem instanceof Error ? problem.message : 'Invalid pattern';
+    }
+
+    if (find.query !== lastQuery) {
+      lastQuery = find.query;
+      current = matches.length > 0 ? 0 : -1;
+      select(view, matches[0]);
+    } else if (current >= matches.length) {
+      current = matches.length > 0 ? 0 : -1;
+    }
+
+    const request = find.request;
+    if (request !== null && request.nonce !== lastNonce) {
+      lastNonce = request.nonce;
+      current = run(view, request.action, matches, current, find.replacement);
+      if (request.action === 'replace' || request.action === 'replaceAll') {
+        matches = [];
+        current = -1;
+      }
+    }
+
+    find.report({ total: matches.length, current, error });
+  };
+
+  apply();
+  return useFind.subscribe(apply);
+}
+
+function run(
+  view: EditorView,
+  action: FindAction,
+  matches: Span[],
+  current: number,
+  replacement: string,
+): number {
+  if (matches.length === 0) return -1;
+
+  if (action === 'next' || action === 'previous') {
+    const delta = action === 'next' ? 1 : -1;
+    const next = (current + delta + matches.length) % matches.length;
+    select(view, matches[next]);
+    return next;
+  }
+
+  if (action === 'replace') {
+    const match = matches[Math.max(0, current)];
+    if (match) view.dispatch({ changes: { ...match, insert: replacement } });
+    return -1;
+  }
+
+  // Back to front keeps the earlier offsets valid as the document changes length.
+  view.dispatch({
+    changes: [...matches].reverse().map((match) => ({ ...match, insert: replacement })),
+  });
+  return -1;
+}
+
+function select(view: EditorView, match: Span | undefined): void {
+  if (!match) return;
+  view.dispatch({ selection: { anchor: match.from, head: match.to }, scrollIntoView: true });
+}
+
+function subscribeNavigate(view: EditorView): () => void {
+  let lastNonce = 0;
+
+  return useNavigate.subscribe(() => {
+    const request = useNavigate.getState().request;
+    if (request === null || request.nonce === lastNonce) return;
+    lastNonce = request.nonce;
+
+    const text = view.state.doc.toString();
+
+    if (request.kind === 'heading') {
+      const entry = outlineOf(text).find((candidate) => candidate.index === request.index);
+      if (!entry) return;
+      const line = view.state.doc.line(Math.min(entry.line, view.state.doc.lines));
+      view.dispatch({ selection: { anchor: line.from }, scrollIntoView: true });
+      view.focus();
+      return;
+    }
+
+    // Replacing the whole document in one transaction keeps the move undoable here too.
+    const next = moveSection(text, request.from, request.to);
+    if (next === text) return;
+    view.dispatch({ changes: { from: 0, to: text.length, insert: next } });
+    view.focus();
+  });
 }

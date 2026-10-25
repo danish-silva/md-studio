@@ -6,6 +6,17 @@ import { docToMdast } from './to-mdast.ts';
 
 export { parseMarkdown, serializeMarkdown, stringifyOptions } from './pipeline.ts';
 export { htmlToMarkdown } from './from-html.ts';
+export { moveSection } from './sections.ts';
+export {
+  frontmatterProblems,
+  lintMarkdown,
+  localLinks,
+  outlineOf,
+  type DocumentLink,
+  type OutlineEntry,
+  type Problem,
+  type ProblemSeverity,
+} from './lint.ts';
 export { schema } from './schema.ts';
 export { mdastToDoc, type FromMdastOptions } from './from-mdast.ts';
 export { docToMdast } from './to-mdast.ts';

@@ -1,6 +1,13 @@
 import {
   commands,
   createEditorState,
+  moveSectionCommand,
+  readSearch,
+  replaceAllMatches,
+  replaceCurrentMatch,
+  revealHeading,
+  setSearchQuery,
+  stepMatch,
   insertTable,
   nodes,
   readStatus,
@@ -12,6 +19,7 @@ import {
   type CommandName,
   type EditorStatus,
   type TableCommandName,
+  type SearchQuery,
   type TableStatus,
 } from '@md-studio/editor';
 import { docToMarkdown } from '@md-studio/markdown';
@@ -22,6 +30,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { storeImages } from '../lib/assets';
 import { readCachedState, writeCachedState } from '../lib/editor-cache';
 import { useDocuments } from '../state/documents';
+import { useFind, type FindAction } from '../state/find';
+import { useNavigate } from '../state/navigate';
 import { LinkBar } from './LinkBar';
 import { TableToolbar } from './TableToolbar';
 import { TaskItemView } from './TaskItemView';
@@ -102,6 +112,14 @@ export function WysiwygPane({
         editor.updateState(next);
         setStatus(readStatus(next));
         setTable(readTableStatus(next));
+
+        const search = readSearch(next);
+        useFind.getState().report({
+          total: search.matches.length,
+          current: search.current,
+          error: search.error,
+        });
+
         if (transaction.docChanged) {
           // The store keeps markdown, not a document, so the file on disk is never a
           // serialisation of something the user cannot see.
@@ -125,7 +143,12 @@ export function WysiwygPane({
     setTable(readTableStatus(editor.state));
     editor.focus();
 
+    const stopFind = subscribeFind(editor);
+    const stopNavigate = subscribeNavigate(editor);
+
     return () => {
+      stopFind();
+      stopNavigate();
       useDocuments.getState().recordViewState(path.current, {
         cursor: editor.state.selection.from,
         scrollTop: parent.scrollTop,
@@ -205,6 +228,78 @@ export function WysiwygPane({
       <div ref={host} className="md-editor-host min-h-0 flex-1 overflow-y-auto" />
     </div>
   );
+}
+
+function sameQuery(a: SearchQuery | null, b: SearchQuery | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.text === b.text && a.regex === b.regex && a.caseSensitive === b.caseSensitive;
+}
+
+/**
+ * The find bar states what it wants and this carries it out. Requests are identified by a
+ * nonce so re-reading the store never replays the last action.
+ */
+function subscribeFind(editor: EditorView): () => void {
+  let lastNonce = 0;
+
+  const apply = () => {
+    const find = useFind.getState();
+    const wanted: SearchQuery | null =
+      find.open && find.query.length > 0
+        ? { text: find.query, regex: find.regex, caseSensitive: find.caseSensitive }
+        : null;
+
+    if (!sameQuery(readSearch(editor.state).query, wanted)) {
+      setSearchQuery(wanted)(editor.state, editor.dispatch);
+    }
+
+    const request = find.request;
+    if (request !== null && request.nonce !== lastNonce) {
+      lastNonce = request.nonce;
+      runFind(editor, request.action, find.replacement);
+    }
+
+    const search = readSearch(editor.state);
+    find.report({
+      total: search.matches.length,
+      current: search.current,
+      error: search.error,
+    });
+  };
+
+  apply();
+  return useFind.subscribe(apply);
+}
+
+function runFind(editor: EditorView, action: FindAction, replacement: string): void {
+  // Focus deliberately stays in the find bar; only the document scrolls.
+  if (action === 'next') {
+    stepMatch(1)(editor.state, editor.dispatch);
+  } else if (action === 'previous') {
+    stepMatch(-1)(editor.state, editor.dispatch);
+  } else if (action === 'replace') {
+    replaceCurrentMatch(replacement)(editor.state, editor.dispatch);
+    stepMatch(1)(editor.state, editor.dispatch);
+  } else {
+    replaceAllMatches(replacement)(editor.state, editor.dispatch);
+  }
+}
+
+function subscribeNavigate(editor: EditorView): () => void {
+  let lastNonce = 0;
+
+  return useNavigate.subscribe(() => {
+    const request = useNavigate.getState().request;
+    if (request === null || request.nonce === lastNonce) return;
+    lastNonce = request.nonce;
+
+    if (request.kind === 'heading') {
+      revealHeading(request.index)(editor.state, editor.dispatch);
+    } else {
+      moveSectionCommand(request.from, request.to)(editor.state, editor.dispatch);
+    }
+    editor.focus();
+  });
 }
 
 /** Positions shift when a file changes on disk, so a stale offset must not throw. */

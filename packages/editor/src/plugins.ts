@@ -9,6 +9,7 @@ import { EditorState, Selection, TextSelection, type Plugin } from 'prosemirror-
 import { markdownInputRules } from './input-rules.ts';
 import { editorKeymap, type KeymapOptions } from './keymap.ts';
 import { pastePlugin, type PasteOptions } from './paste.ts';
+import { searchPlugin } from './search.ts';
 import { tableAlignmentDecorations } from './tables.ts';
 
 export type EditorOptions = KeymapOptions & PasteOptions;
@@ -24,6 +25,7 @@ export function createPlugins(options: EditorOptions = {}): Plugin[] {
     editorKeymap(options),
     markdownInputRules(),
     pastePlugin(options),
+    searchPlugin(),
     tableAlignmentDecorations(),
     keymap(baseKeymap),
     dropCursor({ color: 'var(--app-accent)', width: 2 }),

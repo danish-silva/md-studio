@@ -3,6 +3,17 @@ export { createEditorState, createPlugins, type EditorOptions } from './plugins.
 export { editorKeymap, type KeymapOptions } from './keymap.ts';
 export { pastePlugin, parseDelimited, tableFromRows, type PasteOptions } from './paste.ts';
 export {
+  readSearch,
+  replaceAllMatches,
+  replaceCurrentMatch,
+  searchPlugin,
+  setSearchQuery,
+  stepMatch,
+  type SearchMatch,
+  type SearchQuery,
+  type SearchState,
+} from './search.ts';
+export {
   addColumnAfter,
   addColumnBefore,
   addRowAbove,
@@ -23,6 +34,7 @@ export {
   type TableStatus,
 } from './tables.ts';
 export { markdownInputRules } from './input-rules.ts';
+export { moveSectionCommand, revealHeading } from './outline.ts';
 export {
   readStatus,
   type BlockName,

@@ -41,6 +41,12 @@ tabs (with pin state, view mode, caret and scroll), the active tab, the sidebar 
 explorer's settings, and restore them on launch. Unsaved buffers are written separately as
 drafts and offered back after a crash — or after switching workspaces and returning.
 
+**P7 — finding things.** A command palette (`Ctrl+P` for files, `Ctrl+Shift+P` for
+commands), find and replace in the document with regex and capture groups, search and
+replace across every folder, an outline panel whose entries can be dragged to move whole
+sections, and a problems panel for broken frontmatter, broken relative links and a small
+set of lint rules.
+
 The Tauri shell lands in P9; until then the UI runs in a browser against a dev-only
 filesystem middleware, and workspaces live in `~/.md-studio-dev` (override with
 `MD_STUDIO_DEV_CONFIG`).
@@ -65,8 +71,14 @@ filesystem middleware, and workspaces live in `~/.md-studio-dev` (override with
 - There is no header-row toggle, and the header row cannot be deleted: every GFM table
   has one.
 - Images always go to `assets/` beside the document. The location is not configurable.
-- The explorer filter narrows folders that are already open; it does not search the disk,
-  so a match inside a collapsed folder will not appear. Workspace-wide search is P7.
+- The explorer filter narrows folders that are already open; it does not search the disk.
+  The Search panel is the one that looks at every folder.
+- Workspace search covers markdown files only, and both it and quick-open cap their
+  results rather than paging.
+- Replacing across folders writes to disk and skips any file with unsaved changes,
+  reporting how many it skipped.
+- Clicking a search result opens the file and hands the query to the in-document find, so
+  the match is highlighted wherever the caret lands.
 - Only one file is open at a time. Tabs arrive in P5.
 - Adding a folder means typing or pasting its path, because a browser cannot offer a
   native folder picker. Tauri's dialog replaces that in P9.

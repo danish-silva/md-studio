@@ -41,6 +41,27 @@ export interface AssetWrite {
   data: ArrayBuffer;
 }
 
+export interface ContentSearchOptions {
+  query: string;
+  regex: boolean;
+  caseSensitive: boolean;
+  limit?: number;
+}
+
+export interface ContentMatch {
+  path: string;
+  line: number;
+  column: number;
+  length: number;
+  preview: string;
+}
+
+export interface ContentSearchResult {
+  matches: ContentMatch[];
+  /** True when the result hit the cap and there may be more. */
+  truncated: boolean;
+}
+
 export type WatchEventKind = 'add' | 'addDir' | 'change' | 'unlink' | 'unlinkDir' | 'error';
 
 export interface WatchEvent {
@@ -72,6 +93,10 @@ export interface FileSystemProvider {
 
   /** Subscribes to filesystem events under the roots; returns an unsubscribe function. */
   watch(listener: (event: WatchEvent) => void): () => void;
+
+  /** Every markdown file under the roots, for quick-open. */
+  findFiles(limit?: number): Promise<string[]>;
+  searchContent(options: ContentSearchOptions): Promise<ContentSearchResult>;
 
   /**
    * Small app-owned files — workspaces and drafts — kept outside the user's folders and

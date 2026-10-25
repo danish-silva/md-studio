@@ -183,6 +183,17 @@ body {
   padding: 0 0.25em;
 }
 
+/* Find matches. The current one has to stand out from the rest at a glance. */
+.md-editor-host .ProseMirror .md-search-match {
+  background: color-mix(in srgb, var(--app-accent) 28%, transparent);
+  border-radius: 2px;
+}
+.md-editor-host .ProseMirror .md-search-current {
+  background: var(--app-accent);
+  color: #11111a;
+  border-radius: 2px;
+}
+
 .md-editor-host .ProseMirror-selectednode {
   outline: 2px solid var(--app-accent);
   outline-offset: 2px;

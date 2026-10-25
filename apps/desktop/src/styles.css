@@ -1,0 +1,32 @@
+@import 'tailwindcss';
+
+/*
+ * P0 ships a single dark palette. P8 turns these tokens into switchable themes
+ * (light/dark/system plus accent colour), which is why every colour is a variable.
+ */
+:root {
+  color-scheme: dark;
+
+  --app-bg: #16161a;
+  --app-panel: #1b1b21;
+  --app-border: #2a2a32;
+  --app-hover: #24242c;
+  --app-text: #e6e6ea;
+  --app-muted: #9a9aa4;
+  --app-accent: #8b7bf7;
+  --app-accent-soft: #2b2745;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-family: ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}

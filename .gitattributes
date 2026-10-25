@@ -1,0 +1,15 @@
+# Normalise line endings: LF in the repository, native in the working copy.
+* text=auto eol=lf
+
+# Markdown fixtures are compared byte-for-byte by the round-trip tests (P1),
+# so git must never rewrite their line endings.
+packages/markdown/test/fixtures/** -text
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary

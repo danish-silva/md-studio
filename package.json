@@ -1,0 +1,21 @@
+{
+  "name": "md-studio",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Markdown viewer and editor with a Word-like formatting surface",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @md-studio/desktop",
+    "build": "npm run build -w @md-studio/desktop",
+    "preview": "npm run preview -w @md-studio/desktop",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

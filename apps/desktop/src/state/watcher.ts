@@ -1,6 +1,6 @@
 import { fsProvider } from '../fs';
 import { useExplorer } from './explorer';
-import { useSession } from './session';
+import { useDocuments } from './documents';
 
 /**
  * One subscription for the whole app, fanned out to both stores: the explorer refreshes
@@ -10,6 +10,6 @@ import { useSession } from './session';
 export function startWatching(): () => void {
   return fsProvider.watch((event) => {
     useExplorer.getState().applyWatchEvent(event);
-    useSession.getState().applyWatchEvent(event);
+    useDocuments.getState().applyWatchEvent(event);
   });
 }

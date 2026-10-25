@@ -31,13 +31,23 @@ drag-move, move to recycle bin), a live filesystem watcher, and external changes
 the open document: a clean file reloads itself, a modified one warns instead, and a
 deleted one offers to be written back.
 
-Vertical tabs (P5) and workspaces (P6) are not built yet. The Tauri shell lands in P9;
-until then the UI runs in a browser against a dev-only filesystem middleware.
+**P5 — vertical tabs.** Several documents open at once, as an Arc-style vertical strip:
+a pinned zone above everything, the rest grouped under the workspace folder they belong
+to, drag to reorder, recently closed for one-click reopening, and auto-archiving of tabs
+left untouched. Switching tabs keeps each document's undo history.
+
+Workspaces and session restore (P6) are not built yet, so everything still starts empty.
+The Tauri shell lands in P9; until then the UI runs in a browser against a dev-only
+filesystem middleware.
 
 ### Known gaps
 
-- Switching between formatted and source view remounts the editor, which resets undo
-  history for that document.
+- Switching between formatted and source view resets undo history for that document.
+  Switching *tabs* does not.
+- Ctrl+Tab cycles tabs in the desktop build; a browser keeps that shortcut for itself, so
+  Alt+Up and Alt+Down do the same thing.
+- Auto-archiving only has something to act on once sessions are restored (P6): until
+  then every tab is new each time the app starts.
 - The formatted view serialises the whole document to markdown on every keystroke. That is
   comfortably fast at the sizes tested, and incremental serialisation can wait until it
   is not.

@@ -4,21 +4,24 @@ import { Explorer } from './components/Explorer';
 import { MissingFileBar } from './components/MissingFileBar';
 import { SourceEditor } from './components/SourceEditor';
 import { StatusBar } from './components/StatusBar';
+import { TabList } from './components/TabList';
 import { WysiwygPane } from './components/WysiwygPane';
 import { fsProvider } from './fs';
 import { basename } from './lib/text';
+import { useDocuments } from './state/documents';
 import { useExplorer } from './state/explorer';
 import { useLayout } from './state/layout';
-import { useSession } from './state/session';
 import { startWatching } from './state/watcher';
 
+/** How often forgotten tabs are swept up. The threshold itself is in days. */
+const ARCHIVE_INTERVAL_MS = 5 * 60 * 1000;
+
 export function App() {
-  const doc = useSession((state) => state.doc);
-  const mode = useSession((state) => state.mode);
-  const conflict = useSession((state) => state.conflict);
-  const missing = useSession((state) => state.missing);
-  const busy = useSession((state) => state.busy);
-  const error = useSession((state) => state.error);
+  const activePath = useDocuments((state) => state.activePath);
+  const doc = useDocuments((state) => (state.activePath === null ? null : state.byPath[state.activePath] ?? null));
+  const pendingClose = useDocuments((state) => state.pendingClose);
+  const busy = useDocuments((state) => state.busy);
+  const error = useDocuments((state) => state.error);
 
   const sidebarWidth = useLayout((state) => state.sidebarWidth);
   const sidebarCollapsed = useLayout((state) => state.sidebarCollapsed);
@@ -28,20 +31,49 @@ export function App() {
     return startWatching();
   }, []);
 
-  // Ctrl+S and Ctrl+Shift+M are handled once, at the window, so they work whether or not
-  // the editor has focus and the browser's own save dialog never opens. Ctrl+B belongs to
-  // Bold, so the sidebar toggle lives on Ctrl+\.
+  useEffect(() => {
+    const documents = useDocuments.getState();
+    documents.archiveStale();
+    const timer = setInterval(() => useDocuments.getState().archiveStale(), ARCHIVE_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Handled once, at the window, so they work wherever focus is and the browser's own
+  // shortcuts never fire. Ctrl+B belongs to Bold, so the sidebar toggle lives on Ctrl+\.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (!event.ctrlKey && !event.metaKey) return;
-      const key = event.key.toLowerCase();
+      const documents = useDocuments.getState();
 
+      // Alt+Up/Down as well as Ctrl+Tab, because a browser keeps Ctrl+Tab for itself.
+      if (event.altKey && !event.ctrlKey && !event.metaKey) {
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          documents.activateRelative(1);
+        } else if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          documents.activateRelative(-1);
+        }
+        return;
+      }
+
+      if (!event.ctrlKey && !event.metaKey) return;
+
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        documents.activateRelative(event.shiftKey ? -1 : 1);
+        return;
+      }
+
+      const key = event.key.toLowerCase();
       if (key === 's') {
         event.preventDefault();
-        void useSession.getState().save();
+        void (event.shiftKey ? documents.saveAll() : documents.save());
+      } else if (key === 'w') {
+        event.preventDefault();
+        if (documents.activePath !== null) documents.requestClose(documents.activePath);
       } else if (key === 'm' && event.shiftKey) {
         event.preventDefault();
-        useSession.getState().toggleMode();
+        documents.toggleMode();
       } else if (key === '\\') {
         event.preventDefault();
         useLayout.getState().toggleSidebar();
@@ -59,9 +91,12 @@ export function App() {
           <>
             <aside
               style={{ width: sidebarWidth }}
-              className="shrink-0 border-r border-[var(--app-border)] bg-[var(--app-panel)]"
+              className="flex shrink-0 flex-col overflow-hidden border-r border-[var(--app-border)] bg-[var(--app-panel)]"
             >
-              <Explorer />
+              <TabList />
+              <div className="min-h-0 flex-1">
+                <Explorer />
+              </div>
             </aside>
             <SidebarResizer />
           </>
@@ -80,11 +115,12 @@ export function App() {
             )}
             <button
               type="button"
-              onClick={() => useSession.getState().toggleMode()}
+              disabled={doc === null}
+              onClick={() => useDocuments.getState().toggleMode()}
               title="Toggle source mode (Ctrl+Shift+M)"
-              className="ml-auto rounded border border-[var(--app-border)] px-2 py-0.5 text-xs text-[var(--app-muted)] hover:bg-[var(--app-hover)]"
+              className="ml-auto rounded border border-[var(--app-border)] px-2 py-0.5 text-xs text-[var(--app-muted)] hover:bg-[var(--app-hover)] disabled:opacity-40"
             >
-              {mode === 'wysiwyg' ? 'Formatted' : 'Markdown source'}
+              {doc?.mode === 'source' ? 'Markdown source' : 'Formatted'}
             </button>
           </header>
 
@@ -96,7 +132,7 @@ export function App() {
               <span className="min-w-0 flex-1 break-words">{error}</span>
               <button
                 type="button"
-                onClick={() => useSession.getState().clearError()}
+                onClick={() => useDocuments.getState().clearError()}
                 className="rounded border border-[var(--app-border)] px-2 py-0.5"
               >
                 Dismiss
@@ -104,37 +140,69 @@ export function App() {
             </div>
           )}
 
-          {missing && doc && (
+          {pendingClose !== null && (
+            <div
+              role="alert"
+              className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--app-border)] bg-[var(--app-panel)] px-4 py-2 text-sm"
+            >
+              <span>{basename(pendingClose)} has unsaved changes.</span>
+              <span className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => useDocuments.getState().resolveClose('save')}
+                  className="rounded border border-[var(--app-border)] px-2 py-0.5 text-xs hover:bg-[var(--app-hover)]"
+                >
+                  Save and close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => useDocuments.getState().resolveClose('discard')}
+                  className="rounded border border-red-500/50 px-2 py-0.5 text-xs text-red-200 hover:bg-red-500/20"
+                >
+                  Discard changes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => useDocuments.getState().resolveClose('cancel')}
+                  className="rounded px-2 py-0.5 text-xs text-[var(--app-muted)] hover:bg-[var(--app-hover)]"
+                >
+                  Keep open
+                </button>
+              </span>
+            </div>
+          )}
+
+          {doc?.missing === true && (
             <MissingFileBar
               name={basename(doc.path)}
               dirty={doc.dirty}
-              onRecreate={() => void useSession.getState().save({ force: true })}
-              onClose={() => useSession.getState().closeFile()}
+              onRecreate={() => void useDocuments.getState().save(doc.path, { force: true })}
+              onClose={() => useDocuments.getState().requestClose(doc.path)}
             />
           )}
 
-          {conflict !== null && (
+          {doc?.conflict != null && (
             <ConflictBar
-              conflict={conflict}
-              onReload={() => void useSession.getState().reloadFromDisk()}
-              onOverwrite={() => void useSession.getState().save({ force: true })}
+              conflict={doc.conflict}
+              onReload={() => void useDocuments.getState().reloadFromDisk(doc.path)}
+              onOverwrite={() => void useDocuments.getState().save(doc.path, { force: true })}
             />
           )}
 
           <div className="min-h-0 flex-1">
-            {doc ? (
-              mode === 'wysiwyg' ? (
+            {doc && activePath !== null ? (
+              doc.mode === 'wysiwyg' ? (
                 <WysiwygPane
                   documentKey={`${doc.path}::${doc.revision}::wysiwyg`}
                   documentPath={doc.path}
                   initialMarkdown={doc.text}
-                  onChange={useSession.getState().setText}
+                  onChange={(text) => useDocuments.getState().setText(doc.path, text)}
                 />
               ) : (
                 <SourceEditor
                   documentKey={`${doc.path}::${doc.revision}::source`}
                   initialText={doc.text}
-                  onChange={useSession.getState().setText}
+                  onChange={(text) => useDocuments.getState().setText(doc.path, text)}
                 />
               )
             ) : (

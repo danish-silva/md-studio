@@ -2,7 +2,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { basename, isInside, isMarkdownPath, parentDir, samePath } from '../lib/text';
 import { flattenTree, useExplorer, type TreeRow } from '../state/explorer';
-import { useSession } from '../state/session';
+import { useDocuments } from '../state/documents';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { NamePrompt } from './NamePrompt';
 
@@ -31,8 +31,10 @@ export function Explorer() {
   const showHidden = useExplorer((state) => state.showHidden);
   const error = useExplorer((state) => state.error);
 
-  const activePath = useSession((state) => state.doc?.path ?? null);
-  const dirty = useSession((state) => state.doc?.dirty ?? false);
+  const activePath = useDocuments((state) => state.activePath);
+  const dirty = useDocuments(
+    (state) => (state.activePath === null ? false : state.byPath[state.activePath]?.dirty) ?? false,
+  );
 
   const [prompt, setPrompt] = useState<Prompt>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -64,21 +66,24 @@ export function Explorer() {
       return;
     }
     if (isMarkdownPath(row.path)) {
-      void useSession.getState().openFile(row.path);
+      void useDocuments.getState().open(row.path);
     }
   }, []);
 
-  /** Keeps the open document pointing at the right file after a rename or a move. */
+  /**
+   * Keeps open tabs pointing at the right files after a rename or a move. Renaming a
+   * folder moves every document inside it, not just the one on screen.
+   */
   const followMove = useCallback((from: string, to: string) => {
-    const session = useSession.getState();
-    const open = session.doc?.path;
-    if (open === undefined) return;
+    const documents = useDocuments.getState();
 
-    if (samePath(open, from)) {
-      session.retarget(to);
-    } else if (isInside(from, open)) {
-      // Both paths come from the same provider, so the prefix matches exactly.
-      session.retarget(to + open.slice(from.length));
+    for (const open of [...documents.order]) {
+      if (samePath(open, from)) {
+        documents.retarget(open, to);
+      } else if (isInside(from, open)) {
+        // Both paths come from the same provider, so the prefix matches exactly.
+        documents.retarget(open, to + open.slice(from.length));
+      }
     }
   }, []);
 
@@ -106,13 +111,14 @@ export function Explorer() {
     void (async () => {
       await useExplorer.getState().trashEntry(target);
 
-      const session = useSession.getState();
-      const open = session.doc?.path;
-      if (open === undefined) return;
-      if (!samePath(open, target) && !isInside(target, open)) return;
+      const documents = useDocuments.getState();
+      for (const open of [...documents.order]) {
+        if (!samePath(open, target) && !isInside(target, open)) continue;
 
-      // Unsaved work stays on screen; the "deleted on disk" bar offers to recreate it.
-      if (session.doc?.dirty !== true) session.closeFile();
+        // Unsaved work stays open; the "deleted on disk" bar offers to recreate it.
+        if (documents.byPath[open]?.dirty === true) continue;
+        documents.requestClose(open);
+      }
     })();
   }, []);
 
@@ -247,7 +253,7 @@ export function Explorer() {
             void (async () => {
               const created = await useExplorer.getState().createFile(parent, value);
               if (created !== null && isMarkdownPath(created)) {
-                void useSession.getState().openFile(created);
+                void useDocuments.getState().open(created);
               }
             })();
           }}

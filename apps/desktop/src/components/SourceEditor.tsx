@@ -4,6 +4,7 @@ import { EditorView } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { basicSetup } from 'codemirror';
+import { readCachedState, writeCachedState } from '../lib/editor-cache';
 
 const layout = EditorView.theme({
   '&': { height: '100%', fontSize: '14px' },
@@ -37,27 +38,36 @@ export function SourceEditor({ documentKey, initialText, onChange }: SourceEdito
     const parent = host.current;
     if (!parent) return;
 
+    // Reuse the state this tab had when it was last on screen, so switching away and
+    // back does not reset undo history.
+    const cached = readCachedState<EditorState>(documentKey, initialText);
+
     const view = new EditorView({
       parent,
-      state: EditorState.create({
-        doc: initialText,
-        extensions: [
-          basicSetup,
-          markdown(),
-          oneDark,
-          layout,
-          EditorView.lineWrapping,
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) {
-              notify.current(update.state.doc.toString());
-            }
-          }),
-        ],
-      }),
+      state:
+        cached ??
+        EditorState.create({
+          doc: initialText,
+          extensions: [
+            basicSetup,
+            markdown(),
+            oneDark,
+            layout,
+            EditorView.lineWrapping,
+            EditorView.updateListener.of((update) => {
+              if (update.docChanged) {
+                notify.current(update.state.doc.toString());
+              }
+            }),
+          ],
+        }),
     });
     view.focus();
 
-    return () => view.destroy();
+    return () => {
+      writeCachedState(documentKey, view.state, view.state.doc.toString());
+      view.destroy();
+    };
     // initialText is the seed for this mount only; later edits flow through onChange.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentKey]);

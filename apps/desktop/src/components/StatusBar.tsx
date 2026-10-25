@@ -1,5 +1,5 @@
 import { countWords, detectLineEnding } from '../lib/text';
-import type { OpenDocument } from '../state/session';
+import type { OpenDocument } from '../state/documents';
 
 export interface StatusBarProps {
   doc: OpenDocument | null;

@@ -16,11 +16,12 @@ import {
 } from '@md-studio/editor';
 import { docToMarkdown } from '@md-studio/markdown';
 import { Fragment, Slice } from 'prosemirror-model';
-import type { Command } from 'prosemirror-state';
+import type { Command, EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { storeImages } from '../lib/assets';
-import { useSession } from '../state/session';
+import { readCachedState, writeCachedState } from '../lib/editor-cache';
+import { useDocuments } from '../state/documents';
 import { LinkBar } from './LinkBar';
 import { TableToolbar } from './TableToolbar';
 import { TaskItemView } from './TaskItemView';
@@ -71,7 +72,7 @@ export function WysiwygPane({
         );
         editor.focus();
       } catch (error) {
-        useSession
+        useDocuments
           .getState()
           .reportError(error instanceof Error ? error.message : String(error));
       }
@@ -82,11 +83,17 @@ export function WysiwygPane({
     const parent = host.current;
     if (!parent) return;
 
+    // Reuse the state this tab had when it was last on screen, so switching away and
+    // back does not reset undo history.
+    const cached = readCachedState<EditorState>(documentKey, initialMarkdown);
+
     const editor = new EditorView(parent, {
-      state: createEditorState(initialMarkdown, {
-        onRequestLink: openLinkBar,
-        onImageFiles: takeImageFiles,
-      }),
+      state:
+        cached ??
+        createEditorState(initialMarkdown, {
+          onRequestLink: openLinkBar,
+          onImageFiles: takeImageFiles,
+        }),
       nodeViews: {
         listItem: (node, editorView, getPos) => new TaskItemView(node, editorView, getPos),
       },
@@ -109,6 +116,7 @@ export function WysiwygPane({
     editor.focus();
 
     return () => {
+      writeCachedState(documentKey, editor.state, docToMarkdown(editor.state.doc));
       editor.destroy();
       view.current = null;
       setStatus(null);

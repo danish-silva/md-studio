@@ -4,7 +4,7 @@ A desktop markdown viewer/editor with a Word-like formatting surface, a VS Code-
 multi-root explorer, Arc-style vertical tabs, and restorable workspaces. Markdown text is
 always the source of truth; nothing is stored in a proprietary format.
 
-Status: P0 (scaffold) and P1 (markdown core) complete. P2 is next.
+Status: P0 (scaffold), P1 (markdown core) and P2 (WYSIWYG editor) complete. P3 is next.
 
 ## 1. Locked decisions
 
@@ -54,10 +54,13 @@ file.md
 - **Golden round-trip tests.** A corpus of deliberately awkward markdown files, asserting
   `parse → stringify` is byte-identical, plus `parse → PM doc → mdast → stringify`
   equivalence. Runs in CI from P1 onward and gates every later phase.
-- **Editor choice:** TipTap v3 (ProseMirror) for the schema, commands and table handling;
-  the mdast bridge and serializer are ours, not a third-party markdown plugin, so fidelity
-  is something we can test and fix. Milkdown is the fallback if the bridge proves heavier
-  than expected.
+- **Editor choice: plain ProseMirror, not TipTap.** The plan originally named TipTap v3.
+  By P2 the schema already existed here and the bridge was written against it, while
+  TipTap derives its own schema from extensions — and models two of our nodes differently
+  (`listItem.checked`, and table alignment, which GFM puts on the table rather than the
+  cells). Reconciling two schemas would have cost more than it saved. `prosemirror-commands`,
+  `-schema-list`, `-inputrules` and `-history` give the same capability against the schema
+  we have, with no adapter layer.
 
 ## 3. Filesystem layer
 

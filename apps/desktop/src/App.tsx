@@ -3,6 +3,7 @@ import { ConflictBar } from './components/ConflictBar';
 import { FileList } from './components/FileList';
 import { SourceEditor } from './components/SourceEditor';
 import { StatusBar } from './components/StatusBar';
+import { WysiwygPane } from './components/WysiwygPane';
 import { fsProvider } from './fs';
 import { basename } from './lib/text';
 import { useSession } from './state/session';
@@ -19,9 +20,17 @@ export function App() {
   // and so the browser's own save dialog never opens. P2 adds the full shortcut map.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+      if (!event.ctrlKey && !event.metaKey) return;
+      const key = event.key.toLowerCase();
+
+      if (key === 's') {
         event.preventDefault();
         void useSession.getState().save();
+        return;
+      }
+      if (key === 'm' && event.shiftKey) {
+        event.preventDefault();
+        useSession.getState().toggleMode();
       }
     }
     window.addEventListener('keydown', onKeyDown);
@@ -52,9 +61,14 @@ export function App() {
                 className="size-1.5 rounded-full bg-[var(--app-accent)]"
               />
             )}
-            <span className="ml-auto text-xs text-[var(--app-muted)]">
-              Source mode · Ctrl+S to save
-            </span>
+            <button
+              type="button"
+              onClick={state.toggleMode}
+              title="Toggle source mode (Ctrl+Shift+M)"
+              className="ml-auto rounded border border-[var(--app-border)] px-2 py-0.5 text-xs text-[var(--app-muted)] hover:bg-[var(--app-hover)]"
+            >
+              {state.mode === 'wysiwyg' ? 'Formatted' : 'Markdown source'}
+            </button>
           </header>
 
           {state.error !== null && (
@@ -83,11 +97,19 @@ export function App() {
 
           <div className="min-h-0 flex-1">
             {doc ? (
-              <SourceEditor
-                documentKey={`${doc.path}::${doc.revision}`}
-                initialText={doc.text}
-                onChange={state.setText}
-              />
+              state.mode === 'wysiwyg' ? (
+                <WysiwygPane
+                  documentKey={`${doc.path}::${doc.revision}::wysiwyg`}
+                  initialMarkdown={doc.text}
+                  onChange={state.setText}
+                />
+              ) : (
+                <SourceEditor
+                  documentKey={`${doc.path}::${doc.revision}::source`}
+                  initialText={doc.text}
+                  onChange={state.setText}
+                />
+              )
             ) : (
               <p className="p-8 text-sm text-[var(--app-muted)]">
                 Pick a markdown file from the explorer to start editing.

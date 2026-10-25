@@ -18,11 +18,18 @@ export interface OpenDocument {
 /** Monotonic across the session; only ever read through OpenDocument.revision. */
 let loadCounter = 0;
 
+/**
+ * WYSIWYG is the default because the product is a formatting surface, not a text editor.
+ * Source mode is the escape hatch for anything the visual schema cannot express.
+ */
+export type EditorMode = 'wysiwyg' | 'source';
+
 export interface SessionState {
   roots: string[];
   dirPath: string | null;
   entries: DirEntry[];
   doc: OpenDocument | null;
+  mode: EditorMode;
   /** Set when a save was refused because the file changed on disk. */
   conflict: FileStat | null;
   busy: boolean;
@@ -32,6 +39,8 @@ export interface SessionState {
   openDir: (dirPath: string) => Promise<void>;
   openFile: (filePath: string) => Promise<void>;
   setText: (text: string) => void;
+  setMode: (mode: EditorMode) => void;
+  toggleMode: () => void;
   save: (options?: { force?: boolean }) => Promise<void>;
   reloadFromDisk: () => Promise<void>;
   clearError: () => void;
@@ -46,6 +55,7 @@ export const useSession = create<SessionState>((set, get) => ({
   dirPath: null,
   entries: [],
   doc: null,
+  mode: 'wysiwyg',
   conflict: null,
   busy: false,
   error: null,
@@ -100,6 +110,10 @@ export const useSession = create<SessionState>((set, get) => ({
     if (!doc || doc.text === text) return;
     set({ doc: { ...doc, text, dirty: true } });
   },
+
+  setMode: (mode) => set({ mode }),
+
+  toggleMode: () => set({ mode: get().mode === 'wysiwyg' ? 'source' : 'wysiwyg' }),
 
   save: async (options) => {
     const doc = get().doc;

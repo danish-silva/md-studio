@@ -17,9 +17,23 @@ opening, editing and saving a single file in source mode, with external-change d
 between mdast and a ProseMirror document, guarded by a golden corpus that asserts files
 come back byte-for-byte.
 
-The WYSIWYG editor (P2), the real explorer (P4), vertical tabs (P5) and workspaces (P6)
-are not built yet. The Tauri shell lands in P9; until then the UI runs in a browser against
-a dev-only filesystem middleware.
+**P2 — the formatted editor.** `packages/editor`: a ProseMirror command layer, the
+toolbar, the shortcut map, markdown input rules, task checkboxes, and a per-document
+toggle between the formatted view and the markdown source.
+
+The real explorer (P4), vertical tabs (P5) and workspaces (P6) are not built yet. Tables
+get proper editing tools in P3. The Tauri shell lands in P9; until then the UI runs in a
+browser against a dev-only filesystem middleware.
+
+### Known gaps after P2
+
+- Switching between formatted and source view remounts the editor, which resets undo
+  history for that document.
+- The formatted view serialises the whole document to markdown on every keystroke. That is
+  comfortably fast at the sizes tested, and incremental serialisation can wait until it
+  is not.
+- Column alignment round-trips through the file but is not yet shown in the formatted
+  view, and there are no row/column tools. Both are P3.
 
 ### What a save changes
 

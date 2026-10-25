@@ -4,8 +4,8 @@ A desktop markdown viewer/editor with a Word-like formatting surface, a VS Code-
 multi-root explorer, Arc-style vertical tabs, and restorable workspaces. Markdown text is
 always the source of truth; nothing is stored in a proprietary format.
 
-Status: P0 (scaffold), P1 (markdown core), P2 (WYSIWYG editor) and P3 (tables and paste)
-complete. P4 is next.
+Status: P0 (scaffold), P1 (markdown core), P2 (WYSIWYG editor), P3 (tables and paste) and
+P4 (explorer and watcher) complete. P5 is next.
 
 ## 1. Locked decisions
 

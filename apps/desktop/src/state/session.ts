@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { fsProvider } from '../fs';
-import { StaleWriteError, type DirEntry, type FileStat } from '../fs/types';
+import { StaleWriteError, type FileStat, type WatchEvent } from '../fs/types';
+import { samePath } from '../lib/text';
 
 export interface OpenDocument {
   path: string;
@@ -15,9 +16,6 @@ export interface OpenDocument {
   revision: number;
 }
 
-/** Monotonic across the session; only ever read through OpenDocument.revision. */
-let loadCounter = 0;
-
 /**
  * WYSIWYG is the default because the product is a formatting surface, not a text editor.
  * Source mode is the escape hatch for anything the visual schema cannot express.
@@ -25,66 +23,53 @@ let loadCounter = 0;
 export type EditorMode = 'wysiwyg' | 'source';
 
 export interface SessionState {
-  roots: string[];
-  dirPath: string | null;
-  entries: DirEntry[];
   doc: OpenDocument | null;
   mode: EditorMode;
   /** Set when a save was refused because the file changed on disk. */
   conflict: FileStat | null;
+  /** Set when the open file disappeared from disk underneath us. */
+  missing: boolean;
   busy: boolean;
   error: string | null;
 
-  init: () => Promise<void>;
-  openDir: (dirPath: string) => Promise<void>;
   openFile: (filePath: string) => Promise<void>;
+  closeFile: () => void;
+  /** Follows an in-app rename, so the editor keeps its buffer and history. */
+  retarget: (nextPath: string) => void;
   setText: (text: string) => void;
   setMode: (mode: EditorMode) => void;
   toggleMode: () => void;
   save: (options?: { force?: boolean }) => Promise<void>;
   reloadFromDisk: () => Promise<void>;
+  applyWatchEvent: (event: WatchEvent) => void;
   reportError: (message: string) => void;
   clearError: () => void;
 }
+
+/** Monotonic across the session; only ever read through OpenDocument.revision. */
+let loadCounter = 0;
+
+/**
+ * Guards the asynchronous part of handling a watcher event.
+ *
+ * Events for one file arrive in bursts — an atomic save is a write and a rename, which
+ * the watcher reports as a change or an add followed by an unlink. Each handler stats the
+ * file, and without this a stale stat resolving late would undo what a newer event had
+ * already decided.
+ */
+let watchSequence = 0;
 
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
 export const useSession = create<SessionState>((set, get) => ({
-  roots: [],
-  dirPath: null,
-  entries: [],
   doc: null,
   mode: 'wysiwyg',
   conflict: null,
+  missing: false,
   busy: false,
   error: null,
-
-  init: async () => {
-    set({ busy: true, error: null });
-    try {
-      const roots = await fsProvider.roots();
-      set({ roots, busy: false });
-
-      const first = roots[0];
-      if (first !== undefined) {
-        await get().openDir(first);
-      }
-    } catch (error) {
-      set({ busy: false, error: describe(error) });
-    }
-  },
-
-  openDir: async (dirPath) => {
-    set({ busy: true, error: null });
-    try {
-      const entries = await fsProvider.listDir(dirPath);
-      set({ dirPath, entries, busy: false });
-    } catch (error) {
-      set({ busy: false, error: describe(error) });
-    }
-  },
 
   openFile: async (filePath) => {
     set({ busy: true, error: null });
@@ -99,11 +84,23 @@ export const useSession = create<SessionState>((set, get) => ({
           revision: ++loadCounter,
         },
         conflict: null,
+        missing: false,
         busy: false,
       });
     } catch (error) {
       set({ busy: false, error: describe(error) });
     }
+  },
+
+  closeFile: () => set({ doc: null, conflict: null, missing: false }),
+
+  retarget: (nextPath) => {
+    const doc = get().doc;
+    if (!doc) return;
+    set({
+      doc: { ...doc, path: nextPath, baseStat: { ...doc.baseStat, path: nextPath } },
+      missing: false,
+    });
   },
 
   setText: (text) => {
@@ -124,12 +121,13 @@ export const useSession = create<SessionState>((set, get) => ({
     const saved = doc.text;
     set({ busy: true, error: null });
     try {
-      const stat =
-        options?.force === true
-          ? await fsProvider.writeFile(doc.path, saved)
-          : await fsProvider.writeFile(doc.path, saved, {
-              expectedMtimeMs: doc.baseStat.mtimeMs,
-            });
+      // A missing file has no mtime to match, so recreating it is always a forced write.
+      const force = options?.force === true || get().missing;
+      const stat = force
+        ? await fsProvider.writeFile(doc.path, saved)
+        : await fsProvider.writeFile(doc.path, saved, {
+            expectedMtimeMs: doc.baseStat.mtimeMs,
+          });
 
       // The user may have kept typing while the write was in flight.
       const current = get().doc;
@@ -140,6 +138,7 @@ export const useSession = create<SessionState>((set, get) => ({
       set({
         doc: { ...current, baseStat: stat, dirty: current.text !== saved },
         conflict: null,
+        missing: false,
         busy: false,
       });
     } catch (error) {
@@ -155,6 +154,47 @@ export const useSession = create<SessionState>((set, get) => ({
     const doc = get().doc;
     if (!doc) return;
     await get().openFile(doc.path);
+  },
+
+  /**
+   * External changes to the open file.
+   *
+   * Our own saves produce a change event too, so the on-disk mtime is compared against
+   * the baseline before anything happens — otherwise saving would reload the editor and
+   * throw away the cursor position every time.
+   */
+  applyWatchEvent: (event) => {
+    const doc = get().doc;
+    if (!doc || !samePath(event.path, doc.path)) return;
+
+    const sequence = ++watchSequence;
+
+    if (event.event === 'unlink') {
+      // A conflict with a file that no longer exists is not a conflict any more.
+      set({ missing: true, conflict: null });
+      return;
+    }
+    if (event.event !== 'change' && event.event !== 'add') return;
+
+    void fsProvider
+      .stat(doc.path)
+      .then((stat) => {
+        if (sequence !== watchSequence) return;
+
+        const current = get().doc;
+        if (!current || !samePath(current.path, doc.path)) return;
+        set({ missing: false });
+
+        if (Math.abs(stat.mtimeMs - current.baseStat.mtimeMs) <= 1) return;
+        if (current.dirty) {
+          set({ conflict: stat });
+          return;
+        }
+        void get().reloadFromDisk();
+      })
+      .catch(() => {
+        // The file went away between the event and the stat; the unlink event covers it.
+      });
   },
 
   reportError: (message) => set({ error: message }),

@@ -8,13 +8,18 @@
  * Access is confined to an explicit set of roots. Override them with MD_STUDIO_DEV_ROOTS
  * (a path-delimiter separated list); the default is the repository root.
  */
+import { watch, type FSWatcher } from 'chokidar';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
-import type { ServerResponse } from 'node:http';
+import trash from 'trash';
 import type { Connect, Plugin } from 'vite';
 
 const MOUNT_PATH = '/__fs';
+
+/** Never walked or watched: enormous, and never what someone is writing in. */
+const IGNORED = /(^|[\\/])(node_modules|\.git|\.vite|\.cache|dist|target)([\\/]|$)/;
 
 export interface DevFsOptions {
   /** Absolute paths the middleware may read and write. */
@@ -22,21 +27,137 @@ export interface DevFsOptions {
 }
 
 export function devFsPlugin(options: DevFsOptions = {}): Plugin {
-  let roots: string[] = [];
+  const registry = new RootRegistry();
+  const events = new WatchHub(registry);
 
   return {
     name: 'md-studio:dev-fs',
     apply: 'serve',
 
     configResolved(config) {
-      roots = resolveRoots(options.roots, config.root);
-      config.logger.info(`  dev fs roots: ${roots.join(', ')}`);
+      for (const root of resolveRoots(options.roots, config.root)) {
+        registry.add(root);
+      }
+      config.logger.info(`  dev fs roots: ${registry.list().join(', ')}`);
     },
 
     configureServer(server) {
-      server.middlewares.use(MOUNT_PATH, createHandler(() => roots));
+      server.middlewares.use(MOUNT_PATH, createHandler(registry, events));
+      server.httpServer?.on('close', () => void events.close());
     },
   };
+}
+
+/**
+ * The directories this middleware will touch.
+ *
+ * Adding one at runtime is the development stand-in for Tauri's scoped fs grant (P9):
+ * a folder becomes reachable only once the user has named it.
+ */
+class RootRegistry {
+  #roots: string[] = [];
+  #listeners = new Set<(root: string, added: boolean) => void>();
+
+  list(): string[] {
+    return [...this.#roots];
+  }
+
+  add(root: string): string {
+    const resolved = path.resolve(root);
+    if (!this.#roots.includes(resolved)) {
+      this.#roots.push(resolved);
+      for (const listener of this.#listeners) listener(resolved, true);
+    }
+    return resolved;
+  }
+
+  remove(root: string): void {
+    const resolved = path.resolve(root);
+    if (!this.#roots.includes(resolved)) return;
+    this.#roots = this.#roots.filter((entry) => entry !== resolved);
+    for (const listener of this.#listeners) listener(resolved, false);
+  }
+
+  subscribe(listener: (root: string, added: boolean) => void): void {
+    this.#listeners.add(listener);
+  }
+}
+
+/**
+ * One chokidar watcher per root, fanned out to browser clients over SSE.
+ *
+ * EventSource reconnects on its own, so a dev-server restart heals without the UI having
+ * to care.
+ */
+class WatchHub {
+  #watchers = new Map<string, FSWatcher>();
+  #clients = new Set<ServerResponse>();
+
+  constructor(registry: RootRegistry) {
+    registry.subscribe((root, added) => {
+      if (added) this.#watch(root);
+      else void this.#unwatch(root);
+    });
+  }
+
+  #watch(root: string): void {
+    if (this.#watchers.has(root)) return;
+
+    const watcher = watch(root, {
+      ignoreInitial: true,
+      ignored: (target: string) => IGNORED.test(target),
+      // Editors and sync clients write in bursts; wait for the file to settle.
+      awaitWriteFinish: { stabilityThreshold: 120, pollInterval: 30 },
+    });
+
+    watcher.on('all', (event, target) => {
+      this.#broadcast({ event, path: target });
+    });
+    watcher.on('error', (error: unknown) => {
+      this.#broadcast({ event: 'error', path: root, message: String(error) });
+    });
+
+    this.#watchers.set(root, watcher);
+  }
+
+  async #unwatch(root: string): Promise<void> {
+    const watcher = this.#watchers.get(root);
+    if (!watcher) return;
+    this.#watchers.delete(root);
+    await watcher.close();
+  }
+
+  stream(req: IncomingMessage, res: ServerResponse): void {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+    });
+    res.write('retry: 1000\n\n');
+
+    this.#clients.add(res);
+    req.on('close', () => {
+      this.#clients.delete(res);
+    });
+  }
+
+  #broadcast(payload: Record<string, unknown>): void {
+    const line = `data: ${JSON.stringify(payload)}\n\n`;
+    for (const client of this.#clients) {
+      client.write(line);
+    }
+  }
+
+  async close(): Promise<void> {
+    for (const watcher of this.#watchers.values()) {
+      await watcher.close();
+    }
+    this.#watchers.clear();
+    for (const client of this.#clients) {
+      client.end();
+    }
+    this.#clients.clear();
+  }
 }
 
 function resolveRoots(explicit: string[] | undefined, viteRoot: string): string[] {
@@ -67,12 +188,17 @@ class HttpError extends Error {
   }
 }
 
-function createHandler(getRoots: () => string[]): Connect.NextHandleFunction {
+function createHandler(registry: RootRegistry, events: WatchHub): Connect.NextHandleFunction {
   return (req, res, _next) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const route = url.pathname.replace(/\/+$/, '') || '/';
 
-    dispatch(route, url, req, getRoots())
+    if (route === '/watch') {
+      events.stream(req, res);
+      return;
+    }
+
+    dispatch(route, url, req, registry)
       .then((body) => send(res, 200, body))
       .catch((error: unknown) => {
         if (error instanceof HttpError) {
@@ -89,11 +215,67 @@ async function dispatch(
   route: string,
   url: URL,
   req: Connect.IncomingMessage,
-  roots: string[],
+  registry: RootRegistry,
 ): Promise<Record<string, unknown>> {
+  const roots = registry.list();
+
   switch (route) {
-    case '/roots':
-      return { roots };
+    case '/roots': {
+      if (req.method !== 'POST') return { roots };
+
+      const target = requireString(await readJsonBody(req), 'path');
+      const resolved = path.resolve(target);
+      const stats = await fs.stat(resolved).catch(() => null);
+      if (!stats?.isDirectory()) {
+        throw new HttpError(400, `Not a folder: ${resolved}`);
+      }
+      registry.add(resolved);
+      return { roots: registry.list() };
+    }
+
+    case '/roots/remove': {
+      registry.remove(requireString(await readJsonBody(req), 'path'));
+      return { roots: registry.list() };
+    }
+
+    case '/create': {
+      const body = await readJsonBody(req);
+      const target = requireAllowedPath(asString(body['path']), roots);
+      if (await exists(target)) {
+        throw new HttpError(409, `Already exists: ${target}`);
+      }
+
+      if (body['kind'] === 'directory') {
+        await fs.mkdir(target, { recursive: true });
+      } else {
+        await fs.mkdir(path.dirname(target), { recursive: true });
+        // wx fails rather than truncating, in case something appeared in between.
+        await fs.writeFile(target, asString(body['text']) ?? '', { encoding: 'utf8', flag: 'wx' });
+      }
+      return { stat: await statOf(target) };
+    }
+
+    case '/rename': {
+      const body = await readJsonBody(req);
+      const from = requireAllowedPath(asString(body['from']), roots);
+      const to = requireAllowedPath(asString(body['to']), roots);
+
+      if (from === to) return { stat: await statOf(from) };
+      if (await exists(to)) {
+        throw new HttpError(409, `Already exists: ${to}`);
+      }
+
+      await fs.mkdir(path.dirname(to), { recursive: true });
+      await fs.rename(from, to);
+      return { stat: await statOf(to) };
+    }
+
+    case '/trash': {
+      const target = requireAllowedPath(asString(await readJsonBody(req).then((b) => b['path'])), roots);
+      // Deliberately never fs.rm: deleting from the explorer must be recoverable.
+      await trash(target);
+      return { path: target };
+    }
 
     case '/list': {
       const dirPath = requireAllowedPath(url.searchParams.get('path'), roots);
@@ -275,6 +457,27 @@ async function readBinaryBody(req: Connect.IncomingMessage): Promise<Buffer> {
     chunks.push(chunk as Buffer);
   }
   return Buffer.concat(chunks);
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+function requireString(body: Record<string, unknown>, key: string): string {
+  const value = asString(body[key]);
+  if (value === null || value.length === 0) {
+    throw new HttpError(400, `Missing "${key}"`);
+  }
+  return value;
+}
+
+async function exists(target: string): Promise<boolean> {
+  try {
+    await fs.access(target);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function requireAllowedPath(candidate: string | null, roots: string[]): string {

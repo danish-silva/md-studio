@@ -26,9 +26,13 @@ picker, Tab between cells, HTML from Word and the web converted to markdown on p
 spreadsheet cells pasted as a table, and images written into an `assets/` folder beside
 the document.
 
-The real explorer (P4), vertical tabs (P5) and workspaces (P6) are not built yet. The
-Tauri shell lands in P9; until then the UI runs in a browser against a dev-only
-filesystem middleware.
+**P4 — the explorer.** A multi-root folder tree with file operations (new, rename,
+drag-move, move to recycle bin), a live filesystem watcher, and external changes reaching
+the open document: a clean file reloads itself, a modified one warns instead, and a
+deleted one offers to be written back.
+
+Vertical tabs (P5) and workspaces (P6) are not built yet. The Tauri shell lands in P9;
+until then the UI runs in a browser against a dev-only filesystem middleware.
 
 ### Known gaps
 
@@ -42,6 +46,11 @@ filesystem middleware.
 - There is no header-row toggle, and the header row cannot be deleted: every GFM table
   has one.
 - Images always go to `assets/` beside the document. The location is not configurable.
+- The explorer filter narrows folders that are already open; it does not search the disk,
+  so a match inside a collapsed folder will not appear. Workspace-wide search is P7.
+- Only one file is open at a time. Tabs arrive in P5.
+- Adding a folder means typing or pasting its path, because a browser cannot offer a
+  native folder picker. Tauri's dialog replaces that in P9.
 
 ### What a save changes
 

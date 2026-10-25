@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.2",
@@ -16,6 +17,7 @@
     "@codemirror/view": "^6.43.15",
     "@md-studio/editor": "^0.0.0",
     "@md-studio/markdown": "^0.0.0",
+    "@tanstack/react-virtual": "^3.14.22",
     "codemirror": "^6.0.2",
     "prosemirror-gapcursor": "^1.4.1",
     "prosemirror-model": "^1.25.12",
@@ -31,8 +33,11 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "chokidar": "^6.0.0",
     "tailwindcss": "^4.3.3",
+    "trash": "^10.1.1",
     "typescript": "^7.0.2",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
   }
 }

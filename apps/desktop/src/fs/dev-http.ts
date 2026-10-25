@@ -4,6 +4,7 @@ import {
   type FileContents,
   type FileStat,
   type FileSystemProvider,
+  type WatchEvent,
   type WriteOptions,
 } from './types';
 
@@ -82,4 +83,62 @@ export const devHttpProvider: FileSystemProvider = {
     });
     return stat;
   },
+
+  async addRoot(dirPath) {
+    const { roots } = await post<{ roots: string[] }>('/roots', { path: dirPath });
+    return roots;
+  },
+
+  async removeRoot(dirPath) {
+    const { roots } = await post<{ roots: string[] }>('/roots/remove', { path: dirPath });
+    return roots;
+  },
+
+  async createFile(filePath, text = '') {
+    const { stat } = await post<{ stat: FileStat }>('/create', {
+      path: filePath,
+      kind: 'file',
+      text,
+    });
+    return stat;
+  },
+
+  async createDirectory(dirPath) {
+    const { stat } = await post<{ stat: FileStat }>('/create', {
+      path: dirPath,
+      kind: 'directory',
+    });
+    return stat;
+  },
+
+  async rename(from, to) {
+    const { stat } = await post<{ stat: FileStat }>('/rename', { from, to });
+    return stat;
+  },
+
+  async trash(targetPath) {
+    await post<{ path: string }>('/trash', { path: targetPath });
+  },
+
+  watch(listener) {
+    const source = new EventSource(`${BASE}/watch`);
+
+    source.addEventListener('message', (event: MessageEvent<string>) => {
+      try {
+        listener(JSON.parse(event.data) as WatchEvent);
+      } catch {
+        // A malformed frame is not worth tearing the stream down for.
+      }
+    });
+
+    return () => source.close();
+  },
 };
+
+function post<T>(route: string, body: Record<string, unknown>): Promise<T> {
+  return request<T>(route, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}

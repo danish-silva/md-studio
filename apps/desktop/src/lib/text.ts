@@ -30,6 +30,23 @@ export function basename(filePath: string): string {
   return segments[segments.length - 1] ?? filePath;
 }
 
+/** Keeps whichever separator the host already uses, so paths stay round-trippable. */
+export function joinPath(dir: string, name: string): string {
+  const separator = dir.includes('\\') ? '\\' : '/';
+  return `${dir.replace(/[\\/]+$/, '')}${separator}${name}`;
+}
+
+/** Windows paths differ in case and separator without pointing anywhere different. */
+export function samePath(left: string, right: string): boolean {
+  const normalise = (value: string) => value.replace(/[\\/]+/g, '/').replace(/\/$/, '').toLowerCase();
+  return normalise(left) === normalise(right);
+}
+
+export function isInside(parent: string, candidate: string): boolean {
+  const normalise = (value: string) => value.replace(/[\\/]+/g, '/').replace(/\/$/, '').toLowerCase();
+  return `${normalise(candidate)}/`.startsWith(`${normalise(parent)}/`);
+}
+
 export function parentDir(dirPath: string): string | null {
   const match = /^(.*[\\/])[^\\/]+[\\/]?$/.exec(dirPath);
   if (!match) return null;

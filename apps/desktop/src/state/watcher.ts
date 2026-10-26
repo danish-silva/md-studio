@@ -1,5 +1,6 @@
 import { fsProvider } from '../fs';
 import { useExplorer } from './explorer';
+import { useGit } from './git';
 import { useDocuments } from './documents';
 
 /**
@@ -11,5 +12,6 @@ export function startWatching(): () => void {
   return fsProvider.watch((event) => {
     useExplorer.getState().applyWatchEvent(event);
     useDocuments.getState().applyWatchEvent(event);
+    useGit.getState().scheduleRefresh();
   });
 }

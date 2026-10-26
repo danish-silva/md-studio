@@ -27,6 +27,7 @@ export function App() {
   const pendingClose = useDocuments((state) => state.pendingClose);
   const busy = useDocuments((state) => state.busy);
   const error = useDocuments((state) => state.error);
+  const notice = useDocuments((state) => state.notice);
 
   const pendingDrafts = useWorkspace((state) => state.pendingDrafts);
   const droppedTabs = useWorkspace((state) => state.droppedTabs);
@@ -196,6 +197,10 @@ export function App() {
               onKeep={() => void useWorkspace.getState().resolveDrafts('keep')}
               onDiscard={() => void useWorkspace.getState().resolveDrafts('discard')}
             />
+          )}
+
+          {notice !== null && (
+            <Notice onDismiss={() => useDocuments.getState().clearNotice()}>{notice}</Notice>
           )}
 
           {droppedTabs.length > 0 && (

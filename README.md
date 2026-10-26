@@ -57,6 +57,12 @@ behind it: scoped folder grants, a native folder picker, a `notify` watcher, ato
 writes, recycle-bin deletes, workspace search, and config in the app's own directory.
 Window size and position persist.
 
+**P10 — history, git and export.** Every save records a version, kept content-addressed
+and independent of git so it works in folders that are not repositories. A git panel shows
+the branch and what has changed, stages and unstages files and commits them, with status
+badges in the tree. Documents export to HTML and Word, and print (or save as PDF) through
+the webview.
+
 The UI still runs in a browser against the dev middleware when started with `npm run dev`,
 which is the faster way to work on it; the two are the same `FileSystemProvider` interface
 and the app picks whichever host it finds itself in.
@@ -95,6 +101,14 @@ and the app picks whichever host it finds itself in.
   two editors writing one buffer, so it is not offered.
 - The frontmatter form handles a flat set of fields. Nested YAML is shown as a reason to
   edit it in source view rather than being flattened.
+- Word export leaves images out: embedding them means reading each file as bytes, and a
+  broken image in a document is worse than none.
+- PDF goes through the print dialog rather than a PDF library, so the webview does the
+  pagination and "Save as PDF" is the destination.
+- The git panel works on the first workspace folder, and offers staging, unstaging and
+  commits only — nothing that discards work.
+- Version history keeps the last 50 versions of each file, in the app's own directory
+  rather than beside the document.
 - Adding a folder means typing or pasting its path, because a browser cannot offer a
   native folder picker. Tauri's dialog replaces that in P9.
 

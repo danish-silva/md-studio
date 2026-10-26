@@ -6,6 +6,12 @@ import { docToMdast } from './to-mdast.ts';
 
 export { parseMarkdown, serializeMarkdown, stringifyOptions } from './pipeline.ts';
 export { htmlToMarkdown } from './from-html.ts';
+export {
+  markdownToHtml,
+  markdownToHtmlFragment,
+  type HtmlExportOptions,
+} from './export-html.ts';
+export { markdownToDocx, type DocxExportOptions } from './export-docx.ts';
 export { moveSection } from './sections.ts';
 export { documentStats, type DocumentStats } from './stats.ts';
 export {

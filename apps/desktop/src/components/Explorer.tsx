@@ -4,6 +4,7 @@ import { basename, isInside, isMarkdownPath, parentDir, samePath } from '../lib/
 import { fsProvider } from '../fs';
 import { flattenTree, useExplorer, type TreeRow } from '../state/explorer';
 import { useDocuments } from '../state/documents';
+import { useGit, type FileStatus } from '../state/git';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { NamePrompt } from './NamePrompt';
 
@@ -23,6 +24,15 @@ interface MenuState {
 
 const ROW_HEIGHT = 24;
 
+const GIT_BADGES: Record<FileStatus, string> = {
+  modified: 'M',
+  added: 'A',
+  deleted: 'D',
+  renamed: 'R',
+  untracked: '?',
+  conflicted: '!',
+};
+
 export function Explorer() {
   const roots = useExplorer((state) => state.roots);
   const directories = useExplorer((state) => state.directories);
@@ -33,6 +43,7 @@ export function Explorer() {
   const error = useExplorer((state) => state.error);
 
   const activePath = useDocuments((state) => state.activePath);
+  const gitStatus = useGit((state) => state.byPath);
   const dirty = useDocuments(
     (state) => (state.activePath === null ? false : state.byPath[state.activePath]?.dirty) ?? false,
   );
@@ -391,6 +402,20 @@ export function Explorer() {
                     </span>
                     <span className="truncate">{row.name}</span>
                     {row.loading && <span className="text-[10px] text-[var(--app-muted)]">…</span>}
+                    {gitStatus[row.path] !== undefined && (
+                      <span
+                        aria-label={gitStatus[row.path]}
+                        title={gitStatus[row.path]}
+                        className={[
+                          'ml-auto shrink-0 font-mono text-[10px]',
+                          gitStatus[row.path] === 'untracked'
+                            ? 'text-[var(--app-muted)]'
+                            : 'text-amber-400',
+                        ].join(' ')}
+                      >
+                        {GIT_BADGES[gitStatus[row.path] as FileStatus]}
+                      </span>
+                    )}
                     {isActive && dirty && (
                       <span aria-label="Unsaved changes" className="ml-auto size-1.5 shrink-0 rounded-full bg-[var(--app-accent)]" />
                     )}

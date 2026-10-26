@@ -10,6 +10,7 @@
  */
 import { watch, type FSWatcher } from 'chokidar';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -18,6 +19,22 @@ import trash from 'trash';
 import type { Connect, Plugin } from 'vite';
 
 const MOUNT_PATH = '/__fs';
+
+/**
+ * Makes each atomic write use its own temp file.
+ *
+ * Keying the name on the process id alone meant two writes to the same file raced: the
+ * first rename moved the shared temp away and the second failed with ENOENT.
+ */
+let writeCounter = 0;
+
+function tempNameFor(file: string): string {
+  writeCounter += 1;
+  return path.join(
+    path.dirname(file),
+    `.${path.basename(file)}.${String(process.pid)}.${String(writeCounter)}.tmp`,
+  );
+}
 
 /** Never walked or watched: enormous, and never what someone is writing in. */
 const IGNORED = /(^|[\\/])(node_modules|\.git|\.vite|\.cache|dist|target)([\\/]|$)/;
@@ -311,7 +328,7 @@ async function dispatch(
       if (req.method === 'POST') {
         await fs.mkdir(path.dirname(file), { recursive: true });
         const text = (await readBinaryBody(req)).toString('utf8');
-        const temp = `${file}.${String(process.pid)}.tmp`;
+        const temp = tempNameFor(file);
         // Same atomic write as documents: a crash must not leave half a workspace.
         await fs.writeFile(temp, text, 'utf8');
         await fs.rename(temp, file);
@@ -336,6 +353,20 @@ async function dispatch(
       const name = configName(requireString(await readJsonBody(req), 'name'));
       await fs.rm(path.join(configDir(), name), { force: true });
       return { ok: true };
+    }
+
+    case '/git': {
+      const body = await readJsonBody(req);
+      const cwd = requireAllowedPath(asString(body['cwd']), roots);
+      const args = Array.isArray(body['args'])
+        ? body['args'].filter((arg): arg is string => typeof arg === 'string')
+        : [];
+
+      // Arguments that would point git at a different tree defeat the folder check.
+      if (args.some((arg) => GIT_ESCAPES.some((escape) => arg === escape || arg.startsWith(`${escape}=`)))) {
+        throw new HttpError(400, 'Refusing a git argument that would change the working tree');
+      }
+      return runGit(cwd, args);
     }
 
     case '/trash': {
@@ -455,10 +486,7 @@ async function writeFile(
 
   // Write to a sibling temp file and rename, so a crash mid-write cannot truncate the
   // document. On Windows, fs.rename replaces an existing destination.
-  const tempPath = path.join(
-    path.dirname(filePath),
-    `.${path.basename(filePath)}.${process.pid}.tmp`,
-  );
+  const tempPath = tempNameFor(filePath);
   try {
     await fs.writeFile(tempPath, text, 'utf8');
     await fs.rename(tempPath, filePath);
@@ -620,6 +648,23 @@ function configName(candidate: string | null): string {
     throw new HttpError(400, `Not a valid config name: ${String(candidate)}`);
   }
   return candidate;
+}
+
+/** Arguments that would move git somewhere else, defeating the folder check. */
+const GIT_ESCAPES = ['-C', '--git-dir', '--work-tree', '--exec-path'];
+
+function runGit(cwd: string, args: string[]): Promise<Record<string, unknown>> {
+  return new Promise((resolve) => {
+    execFile('git', args, { cwd, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
+      const code =
+        error && typeof (error as { code?: unknown }).code === 'number'
+          ? (error as { code: number }).code
+          : error
+            ? -1
+            : 0;
+      resolve({ stdout, stderr: stderr || (error?.message ?? ''), code });
+    });
+  });
 }
 
 function asString(value: unknown): string | null {

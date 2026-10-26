@@ -7,6 +7,7 @@ import {
   type FileContents,
   type FileStat,
   type FileSystemProvider,
+  type GitResult,
   type WatchEvent,
   type WriteOptions,
 } from './types';
@@ -81,6 +82,12 @@ export const tauriProvider: FileSystemProvider = {
   listConfigs: (prefix) => call<string[]>('config_list', { prefix }),
 
   pickFolder: () => call<string | null>('pick_folder'),
+
+  saveDialog: (options) => call<string | null>('save_dialog', { options }),
+  writeBinary: (path, data) =>
+    call<FileStat>('fs_write_binary', { path, data: Array.from(data) }),
+
+  runGit: (cwd, args) => call<GitResult>('git_run', { cwd, args }),
 
   watch(listener) {
     // `listen` resolves asynchronously, so unsubscribing has to cope with being called

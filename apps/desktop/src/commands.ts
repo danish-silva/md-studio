@@ -4,6 +4,7 @@ import { useFind } from './state/find';
 import { useLayout } from './state/layout';
 import { useNavigate } from './state/navigate';
 import { expandTemplate, useSettings } from './state/settings';
+import { exportDocument, printDocument } from './lib/export';
 import { parentDir } from './lib/text';
 
 export interface AppCommand {
@@ -140,6 +141,43 @@ export function appCommands(): AppCommand[] {
           },
     );
 
+    const active = documents.byPath[documents.activePath ?? ''];
+    if (active) {
+      commands.push(
+        {
+          id: 'export.html',
+          title: 'Export as HTML',
+          run: () => void report(exportDocument('html', active.path, active.text)),
+        },
+        {
+          id: 'export.docx',
+          title: 'Export as Word (.docx)',
+          run: () => void report(exportDocument('docx', active.path, active.text)),
+        },
+        {
+          id: 'export.pdf',
+          title: 'Print, or save as PDF',
+          run: () => {
+            try {
+              printDocument(active.path, active.text);
+            } catch (error) {
+              useDocuments.getState().reportError(describe(error));
+            }
+          },
+        },
+        {
+          id: 'panel.history',
+          title: 'Show version history',
+          run: () => useLayout.getState().showSidebarPanel('history'),
+        },
+        {
+          id: 'panel.git',
+          title: 'Show git changes',
+          run: () => useLayout.getState().showSidebarPanel('git'),
+        },
+      );
+    }
+
     for (const template of useSettings.getState().templates) {
       commands.push({
         id: `template.insert.${template.id}`,
@@ -167,6 +205,20 @@ export function appCommands(): AppCommand[] {
   }
 
   return commands;
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** Exporting is slow enough to be worth confirming, and can fail on the way out. */
+async function report(work: Promise<string | null>): Promise<void> {
+  try {
+    const target = await work;
+    if (target !== null) useDocuments.getState().notify(`Exported to ${target}`);
+  } catch (error) {
+    useDocuments.getState().reportError(describe(error));
+  }
 }
 
 async function createFrom(folder: string, body: string): Promise<void> {

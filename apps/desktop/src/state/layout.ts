@@ -4,7 +4,14 @@ const MIN_WIDTH = 160;
 const MAX_WIDTH = 560;
 
 /** Which of the stacked sidebar panels is showing. */
-export type PanelId = 'files' | 'search' | 'outline' | 'problems' | 'frontmatter';
+export type PanelId =
+  | 'files'
+  | 'search'
+  | 'outline'
+  | 'problems'
+  | 'frontmatter'
+  | 'history'
+  | 'git';
 
 /** Chrome rather than content. Width and collapse are part of the workspace file. */
 export interface LayoutState {

@@ -8,6 +8,7 @@
 use std::{
     collections::HashMap,
     fs,
+    sync::atomic::{AtomicU64, Ordering},
     path::{Component, Path, PathBuf},
     sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
@@ -16,13 +17,18 @@ use std::{
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use walkdir::WalkDir;
 
 /// Never walked or watched: enormous, and never what someone is writing in.
 const IGNORED: [&str; 6] = ["node_modules", ".git", ".vite", ".cache", "dist", "target"];
 
 const FILE_LIMIT: usize = 5_000;
+
+/// Makes each atomic write use its own temp file. Keying the name on the process id
+/// alone meant two writes to the same file raced: the first rename moved the shared temp
+/// away and the second failed because it was no longer there.
+static WRITE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -117,6 +123,9 @@ struct WatchEvent {
 pub struct Roots {
     paths: Mutex<Vec<PathBuf>>,
     watchers: Mutex<HashMap<PathBuf, RecommendedWatcher>>,
+    /// Files the user named in a save dialog. Choosing a destination is the permission;
+    /// each one is good for a single write and is then forgotten.
+    picked: Mutex<Vec<PathBuf>>,
 }
 
 pub struct ConfigDir(pub PathBuf);
@@ -381,7 +390,8 @@ fn write_atomically(file: &Path, bytes: &[u8]) -> FsResult<()> {
     fs::create_dir_all(parent)?;
 
     let name = file.file_name().and_then(|name| name.to_str()).unwrap_or("file");
-    let temp = parent.join(format!(".{name}.{}.tmp", std::process::id()));
+    let ticket = WRITE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let temp = parent.join(format!(".{name}.{}.{ticket}.tmp", std::process::id()));
 
     if let Err(error) = fs::write(&temp, bytes) {
         let _ = fs::remove_file(&temp);
@@ -441,6 +451,119 @@ fn first_free_name(dir: &Path, name: &str) -> PathBuf {
         }
     }
     dir.join(name)
+}
+
+#[tauri::command]
+pub fn fs_write_binary(roots: State<Roots>, path: String, data: Vec<u8>) -> FsResult<FileStat> {
+    let file = require_allowed_or_picked(&roots, &path)?;
+    write_atomically(&file, &data)?;
+    stat_of(&file)
+}
+
+/// An export may legitimately land outside every workspace folder, because the user said
+/// so in a save dialog. Nothing else accepts a picked path.
+fn require_allowed_or_picked(roots: &State<Roots>, candidate: &str) -> FsResult<PathBuf> {
+    if let Ok(path) = require_allowed(roots, candidate) {
+        return Ok(path);
+    }
+
+    let normalised = normalise(&PathBuf::from(candidate));
+    let mut picked = roots.picked.lock().map_err(|_| FsError::new("Picked list is poisoned"))?;
+
+    match picked.iter().position(|path| path == &normalised) {
+        Some(index) => {
+            picked.remove(index);
+            Ok(normalised)
+        }
+        None => Err(FsError::new(format!(
+            "Path is outside the folders this workspace may use: {candidate}"
+        ))),
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitResult {
+    stdout: String,
+    stderr: String,
+    code: i32,
+}
+
+/// Arguments that would move git somewhere else, defeating the folder check.
+const GIT_ESCAPES: [&str; 4] = ["-C", "--git-dir", "--work-tree", "--exec-path"];
+
+/// Runs git inside a granted folder.
+///
+/// The working directory is checked like any other path, and arguments that would point
+/// git at a different tree are refused — otherwise `git -C ..` would walk straight out of
+/// the workspace.
+#[tauri::command]
+pub fn git_run(roots: State<Roots>, cwd: String, args: Vec<String>) -> FsResult<GitResult> {
+    let folder = require_allowed(&roots, &cwd)?;
+    if !folder.is_dir() {
+        return Err(FsError::new(format!("Not a folder: {cwd}")));
+    }
+
+    for arg in &args {
+        if GIT_ESCAPES.iter().any(|escape| arg == escape || arg.starts_with(&format!("{escape}="))) {
+            return Err(FsError::new(format!("Refusing git argument: {arg}")));
+        }
+    }
+
+    let mut command = std::process::Command::new("git");
+    command.current_dir(&folder).args(&args);
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW: a console flashing up on every status call would be absurd.
+        command.creation_flags(0x0800_0000);
+    }
+
+    let output = command
+        .output()
+        .map_err(|error| FsError::new(format!("Could not run git: {error}")))?;
+
+    Ok(GitResult {
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        code: output.status.code().unwrap_or(-1),
+    })
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveOptions {
+    default_name: String,
+    filter_name: String,
+    extensions: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn save_dialog(app: AppHandle, options: SaveOptions) -> FsResult<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let extensions: Vec<&str> = options.extensions.iter().map(String::as_str).collect();
+    let (sender, receiver) = std::sync::mpsc::channel();
+
+    app.dialog()
+        .file()
+        .set_file_name(&options.default_name)
+        .add_filter(&options.filter_name, &extensions)
+        .save_file(move |picked| {
+            let _ = sender.send(picked);
+        });
+
+    let chosen = receiver.recv().map_err(|error| FsError::new(error.to_string()))?;
+    let Some(path) = chosen.and_then(|path| path.into_path().ok()) else {
+        return Ok(None);
+    };
+
+    let normalised = normalise(&path);
+    if let Ok(mut picked) = app.state::<Roots>().picked.lock() {
+        picked.push(normalised.clone());
+    }
+    Ok(Some(normalised.to_string_lossy().into_owned()))
 }
 
 #[tauri::command]

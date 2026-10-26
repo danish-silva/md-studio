@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { fsProvider } from '../fs';
 import { StaleWriteError, type FileStat, type WatchEvent } from '../fs/types';
 import { dropCachedStates } from '../lib/editor-cache';
+import { recordSnapshot } from './history';
 import { isInside, samePath } from '../lib/text';
 
 /**
@@ -82,6 +83,8 @@ export interface DocumentsState {
   pendingClose: string | null;
   busy: boolean;
   error: string | null;
+  /** A neutral message, for things that went right. */
+  notice: string | null;
 
   open: (path: string) => Promise<void>;
   activate: (path: string) => void;
@@ -115,7 +118,9 @@ export interface DocumentsState {
   setAutoArchiveDays: (days: number) => void;
 
   reportError: (message: string) => void;
+  notify: (message: string) => void;
   clearError: () => void;
+  clearNotice: () => void;
 }
 
 /** Monotonic across the session; only ever read through OpenDocument.revision. */
@@ -159,6 +164,7 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
   pendingClose: null,
   busy: false,
   error: null,
+  notice: null,
 
   open: async (path) => {
     const existing = get().byPath[path];
@@ -388,6 +394,10 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
         missing: false,
       });
       set({ busy: false });
+
+      // Keep a version of what was just written. Failing to record one must never fail
+      // the save itself.
+      void recordSnapshot(doc.path, saved).catch(() => undefined);
     } catch (error) {
       if (error instanceof StaleWriteError) {
         patch(set, get, target, { conflict: error.current });
@@ -492,7 +502,9 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
   setAutoArchiveDays: (days) => set({ autoArchiveDays: Math.max(0, days) }),
 
   reportError: (message) => set({ error: message }),
+  notify: (message) => set({ notice: message }),
   clearError: () => set({ error: null }),
+  clearNotice: () => set({ notice: null }),
 }));
 
 type Setter = (partial: Partial<DocumentsState>) => void;

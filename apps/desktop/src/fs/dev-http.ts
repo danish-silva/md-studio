@@ -4,6 +4,7 @@ import {
   type FileContents,
   type FileStat,
   type ContentSearchResult,
+  type GitResult,
   type FileSystemProvider,
   type WatchEvent,
   type WriteOptions,
@@ -136,6 +137,10 @@ export const devHttpProvider: FileSystemProvider = {
       limit: String(limit),
     });
     return request<ContentSearchResult>(`/search/content?${params.toString()}`);
+  },
+
+  runGit(cwd, args) {
+    return post<GitResult>('/git', { cwd, args });
   },
 
   async readConfig(name) {

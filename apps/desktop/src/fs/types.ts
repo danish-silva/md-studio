@@ -62,6 +62,18 @@ export interface ContentSearchResult {
   truncated: boolean;
 }
 
+export interface GitResult {
+  stdout: string;
+  stderr: string;
+  code: number;
+}
+
+export interface SaveDialogOptions {
+  defaultName: string;
+  filterName: string;
+  extensions: string[];
+}
+
 export type WatchEventKind = 'add' | 'addDir' | 'change' | 'unlink' | 'unlinkDir' | 'error';
 
 export interface WatchEvent {
@@ -99,6 +111,16 @@ export interface FileSystemProvider {
    * so the UI asks for one to be typed instead.
    */
   pickFolder?(): Promise<string | null>;
+
+  /**
+   * Native save dialog and the binary write that follows it. Absent in the browser, where
+   * an export is downloaded instead.
+   */
+  saveDialog?(options: SaveDialogOptions): Promise<string | null>;
+  writeBinary?(path: string, data: Uint8Array): Promise<FileStat>;
+
+  /** Runs git inside a folder of the workspace. */
+  runGit(cwd: string, args: string[]): Promise<GitResult>;
 
   /** Every markdown file under the roots, for quick-open. */
   findFiles(limit?: number): Promise<string[]>;

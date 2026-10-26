@@ -94,13 +94,20 @@ export interface FileSystemProvider {
   /** Subscribes to filesystem events under the roots; returns an unsubscribe function. */
   watch(listener: (event: WatchEvent) => void): () => void;
 
+  /**
+   * Native folder picker. Absent in the browser, where a page cannot learn a real path,
+   * so the UI asks for one to be typed instead.
+   */
+  pickFolder?(): Promise<string | null>;
+
   /** Every markdown file under the roots, for quick-open. */
   findFiles(limit?: number): Promise<string[]>;
   searchContent(options: ContentSearchOptions): Promise<ContentSearchResult>;
 
   /**
-   * Small app-owned files — workspaces and drafts — kept outside the user's folders and
-   * addressed by name rather than path. Tauri's app-data directory replaces this in P9.
+   * Small app-owned files — workspaces, drafts and settings — kept outside the user's
+   * folders and addressed by name rather than path. Backed by Tauri's app config
+   * directory, or a dev-only directory in the browser.
    */
   readConfig(name: string): Promise<string | null>;
   writeConfig(name: string, text: string): Promise<void>;

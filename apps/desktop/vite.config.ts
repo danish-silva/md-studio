@@ -8,5 +8,10 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    watch: {
+      // Cargo holds its build output open, and Vite's watcher reports EBUSY on every
+      // rebuild. Nothing in there is a frontend source anyway.
+      ignored: ['**/src-tauri/**'],
+    },
   },
 });

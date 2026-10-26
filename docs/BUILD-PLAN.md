@@ -6,8 +6,8 @@ always the source of truth; nothing is stored in a proprietary format.
 
 Status: P0 (scaffold), P1 (markdown core), P2 (WYSIWYG editor), P3 (tables and paste),
 P4 (explorer and watcher), P5 (vertical tabs), P6 (workspaces and restore), P7 (palette,
-search, outline, problems) and P8 (settings, themes, rendering) complete. P9 is next:
-the Tauri shell, which still needs the Rust toolchain installed.
+search, outline, problems), P8 (settings, themes, rendering) and P9 (the Tauri shell)
+complete. P10 is next: version history, git integration and export.
 
 ## 1. Locked decisions
 
@@ -21,17 +21,11 @@ the Tauri shell, which still needs the Rust toolchain installed.
 | Wiki-links `[[note]]` | **Not implemented** | Non-standard; would break portability |
 | Repo | `D:\Projects\md-studio`, remote `danish-silva/md-studio` | Existing |
 
-### Known prerequisite gap
+### Toolchain
 
-Tauri on Windows needs three things. WebView2 is present (155.0.4283.62). Missing:
-
-- **Rust toolchain** — `winget install Rustlang.Rustup`
-- **MSVC C++ build tools** — `winget install Microsoft.VisualStudio.2022.BuildTools`
-  with the "Desktop development with C++" workload (several GB)
-
-Phases P0–P8 are pure frontend work and can proceed before these land, against a dev-only
-filesystem provider (see §3). The Tauri shell becomes real in P1 if the toolchain is
-installed by then, otherwise at P9.
+Satisfied as of P9: Rust 1.99.1 (`stable-x86_64-pc-windows-msvc`), Visual Studio Build
+Tools 2022, and WebView2. The browser path remains supported and is the faster way to
+work on the UI.
 
 ## 2. Markdown core (`packages/markdown`)
 

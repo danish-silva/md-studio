@@ -52,9 +52,14 @@ editor font, optional autosave, focus and typewriter modes, spellcheck, a split 
 templates, frontmatter as a form, markdown-aware word count and reading time, and
 Mermaid/KaTeX rendering for fenced blocks.
 
-The Tauri shell lands in P9; until then the UI runs in a browser against a dev-only
-filesystem middleware, and workspaces and settings live in `~/.md-studio-dev` (override
-with `MD_STUDIO_DEV_CONFIG`).
+**P9 — the Tauri shell.** The app now runs as a desktop window with a Rust filesystem
+behind it: scoped folder grants, a native folder picker, a `notify` watcher, atomic
+writes, recycle-bin deletes, workspace search, and config in the app's own directory.
+Window size and position persist.
+
+The UI still runs in a browser against the dev middleware when started with `npm run dev`,
+which is the faster way to work on it; the two are the same `FileSystemProvider` interface
+and the app picks whichever host it finds itself in.
 
 ### Known gaps
 
@@ -62,8 +67,6 @@ with `MD_STUDIO_DEV_CONFIG`).
   Switching *tabs* does not.
 - Ctrl+Tab cycles tabs in the desktop build; a browser keeps that shortcut for itself, so
   Alt+Up and Alt+Down do the same thing.
-- Window size and position are not persisted. That is Tauri's job and arrives with the
-  shell in P9.
 - Switching workspaces with unsaved changes does not prompt. The draft is kept, and
   coming back offers to restore it.
 - A tab whose file has since been deleted is dropped during restore, with a note saying
@@ -107,15 +110,26 @@ definitions — is held verbatim and written back unchanged.
 
 ## Running it
 
+As a desktop app:
+
 ```bash
 npm install
+npm run app
+```
+
+Or in a browser, which is quicker to iterate on:
+
+```bash
 npm run dev
 ```
 
-Then open <http://localhost:5173>.
+Then open <http://localhost:5173>. The browser build needs Node only; the desktop build
+also needs the Rust toolchain and, on Windows, the MSVC C++ build tools.
 
-By default the app may only read and write inside the repository. Point it elsewhere with
-a path-delimiter separated list:
+In the desktop app, folders are added through the native picker and nothing outside a
+granted folder can be read or written. In the browser the same grant is simulated: by
+default only the repository is reachable, and you can point it elsewhere with a
+path-delimiter separated list:
 
 ```bash
 MD_STUDIO_DEV_ROOTS="D:\\Notes;D:\\Projects" npm run dev
@@ -129,7 +143,8 @@ phases have to round-trip.
 | Path | Contains |
 | --- | --- |
 | `apps/desktop/src` | React UI: state, components, filesystem providers |
-| `apps/desktop/dev` | Development-only filesystem middleware (replaced by Rust in P9) |
+| `apps/desktop/src-tauri` | Rust: filesystem commands, watcher, search, config |
+| `apps/desktop/dev` | The same surface over HTTP, for working in a browser |
 | `docs` | Build plan and decision records |
 | `samples` | Scratch markdown documents |
 
@@ -137,6 +152,8 @@ phases have to round-trip.
 
 | Command | Does |
 | --- | --- |
+| `npm run app` | The desktop app (builds Rust the first time) |
+| `npm run app:build` | A packaged build |
 | `npm run dev` | Vite dev server with the filesystem bridge |
 | `npm run build` | Typecheck, then a production bundle |
 | `npm run typecheck` | `tsc --noEmit` across every workspace |

@@ -56,6 +56,12 @@ export interface WorkspaceState {
   pendingDrafts: PendingDraft[];
   /** Tabs whose files no longer exist, dropped during restore. */
   droppedTabs: string[];
+  /**
+   * Set when the workspace file exists but could not be read. Saving is suspended while
+   * it is true, because writing over a file we failed to parse would destroy the session
+   * it describes.
+   */
+  corrupt: boolean;
   error: string | null;
 
   boot: () => Promise<void>;
@@ -227,6 +233,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   restoring: true,
   pendingDrafts: [],
   droppedTabs: [],
+  corrupt: false,
   error: null,
 
   boot: async () => {
@@ -292,6 +299,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       list: [...get().list, entry],
       pendingDrafts: [],
       droppedTabs: [],
+      corrupt: false,
       restoring: false,
     });
     await get().persistNow();
@@ -348,8 +356,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   persistNow: async () => {
-    const { id, name } = get();
-    if (id === null) return;
+    const { id, name, corrupt } = get();
+    if (id === null || corrupt) return;
 
     try {
       const snapshot = snapshotOf(id, name);
@@ -386,15 +394,25 @@ type Setter = (partial: Partial<WorkspaceState>) => void;
 type Getter = () => WorkspaceState;
 
 async function applyWorkspace(id: string, set: Setter, get: Getter): Promise<void> {
-  set({ restoring: true, pendingDrafts: [], droppedTabs: [], error: null });
+  set({ restoring: true, pendingDrafts: [], droppedTabs: [], corrupt: false, error: null });
 
   try {
     const raw = await fsProvider.readConfig(fileFor(id));
     const snapshot = raw === null ? null : parseSnapshot(raw);
 
     if (snapshot === null) {
+      // A missing file is a new workspace; an unreadable one is a problem worth saying
+      // out loud, and worth not overwriting.
+      const unreadable = raw !== null;
       await useExplorer.getState().init();
-      set({ id, restoring: false });
+      set({
+        id,
+        restoring: false,
+        corrupt: unreadable,
+        error: unreadable
+          ? `This workspace could not be read, so ${fileFor(id)} has been left untouched and nothing will be saved over it.`
+          : null,
+      });
       return;
     }
 
@@ -450,6 +468,7 @@ async function applyWorkspace(id: string, set: Setter, get: Getter): Promise<voi
     set({
       id,
       name: snapshot.name || entry?.name || 'Workspace',
+      corrupt: false,
       droppedTabs: dropped,
       pendingDrafts: await collectDrafts(),
       restoring: false,

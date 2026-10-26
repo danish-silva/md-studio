@@ -319,7 +319,8 @@ async function dispatch(
       }
 
       const text = await fs.readFile(file, 'utf8').catch(() => null);
-      return { text };
+      // A BOM would make JSON parsing fail and look like a corrupt workspace.
+      return { text: text === null ? null : text.replace(/^﻿/, '') };
     }
 
     case '/config/list': {

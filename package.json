@@ -13,7 +13,9 @@
     "build": "npm run build -w @md-studio/desktop",
     "preview": "npm run preview -w @md-studio/desktop",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "app": "npm run tauri:dev -w @md-studio/desktop",
+    "app:build": "npm run tauri:build -w @md-studio/desktop"
   },
   "engines": {
     "node": ">=20"

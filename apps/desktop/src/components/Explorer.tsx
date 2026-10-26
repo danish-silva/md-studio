@@ -1,6 +1,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { basename, isInside, isMarkdownPath, parentDir, samePath } from '../lib/text';
+import { fsProvider } from '../fs';
 import { flattenTree, useExplorer, type TreeRow } from '../state/explorer';
 import { useDocuments } from '../state/documents';
 import { ContextMenu, type MenuItem } from './ContextMenu';
@@ -169,7 +170,16 @@ export function Explorer() {
           <button
             type="button"
             title="Add a folder to the workspace"
-            onClick={() => setPrompt({ kind: 'addRoot' })}
+            onClick={() => {
+              const pick = fsProvider.pickFolder?.bind(fsProvider);
+              if (!pick) {
+                setPrompt({ kind: 'addRoot' });
+                return;
+              }
+              void pick().then((picked) => {
+                if (picked !== null) void useExplorer.getState().addRoot(picked);
+              });
+            }}
             className="rounded px-1.5 py-0.5 text-xs hover:bg-[var(--app-hover)]"
           >
             + Folder

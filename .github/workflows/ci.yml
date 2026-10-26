@@ -2,8 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
+
+# A branch that is also open as a pull request would otherwise build twice; the group
+# name matches across both events so the older run is cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   frontend:

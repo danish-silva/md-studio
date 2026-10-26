@@ -7,8 +7,8 @@ always the source of truth; nothing is stored in a proprietary format.
 Status: P0 (scaffold), P1 (markdown core), P2 (WYSIWYG editor), P3 (tables and paste),
 P4 (explorer and watcher), P5 (vertical tabs), P6 (workspaces and restore), P7 (palette,
 search, outline, problems), P8 (settings, themes, rendering) and P9 (the Tauri shell)
-and P10 (history, git, export) complete. P11 is next: packaging — installer, icons,
-updater and a release workflow.
+P10 (history, git, export) and P11 (packaging) complete. Every phase in this plan has
+shipped.
 
 ## 1. Locked decisions
 

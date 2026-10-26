@@ -63,6 +63,9 @@ the branch and what has changed, stages and unstages files and commits them, wit
 badges in the tree. Documents export to HTML and Word, and print (or save as PDF) through
 the webview.
 
+**P11 — packaging.** MSI and NSIS installers, a generated icon set, an opt-in updater and
+a release workflow that builds and drafts a GitHub release from a tag.
+
 The UI still runs in a browser against the dev middleware when started with `npm run dev`,
 which is the faster way to work on it; the two are the same `FileSystemProvider` interface
 and the app picks whichever host it finds itself in.
@@ -167,7 +170,63 @@ phases have to round-trip.
 | Command | Does |
 | --- | --- |
 | `npm run app` | The desktop app (builds Rust the first time) |
-| `npm run app:build` | A packaged build |
+| `npm run app:build` | Installers, into `apps/desktop/src-tauri/target/release/bundle` |
 | `npm run dev` | Vite dev server with the filesystem bridge |
 | `npm run build` | Typecheck, then a production bundle |
 | `npm run typecheck` | `tsc --noEmit` across every workspace |
+
+## Releasing
+
+Push a tag and the release workflow builds on Windows and opens a draft release:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+To build installers locally instead:
+
+```bash
+npm run app:build
+```
+
+They land in `apps/desktop/src-tauri/target/release/bundle` — an `.msi` and an NSIS
+`-setup.exe`. The NSIS installer installs per user, so it needs no administrator rights.
+
+### Turning on updates
+
+Updates are off by default, because they need a signing key that only you should hold.
+The app reports "this build may not have an update server configured" until you set one
+up, and the updater plugin is registered only when it is.
+
+1. Generate a keypair, keeping the private key **outside the repository**:
+
+   ```bash
+   npx @tauri-apps/cli signer generate -w ~/.md-studio-updater.key
+   ```
+
+2. Put the public key into `apps/desktop/src-tauri/tauri.updater.conf.json`, and set the
+   endpoint to wherever `latest.json` will be published.
+
+3. Add `TAURI_SIGNING_PRIVATE_KEY` (the key's contents) and
+   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` to the repository's GitHub secrets. The release
+   workflow already reads them; without them it still builds installers, it just cannot
+   sign an update.
+
+4. Build with the overlay merged in:
+
+   ```bash
+   npm run app:build -- --config src-tauri/tauri.updater.conf.json
+   ```
+
+Nothing in the repository contains a private key, and none was generated for you.
+
+### Icons
+
+`scripts/icon-source.png` is drawn by `scripts/make-icon.mjs`, which writes the PNG
+directly so the repository needs no image dependency for something run once in a while.
+After changing it:
+
+```bash
+node scripts/make-icon.mjs
+cd apps/desktop && npx @tauri-apps/cli icon ../../scripts/icon-source.png
+```

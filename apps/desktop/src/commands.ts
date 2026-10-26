@@ -4,6 +4,7 @@ import { useFind } from './state/find';
 import { useLayout } from './state/layout';
 import { useNavigate } from './state/navigate';
 import { expandTemplate, useSettings } from './state/settings';
+import { useUpdates } from './state/updates';
 import { exportDocument, printDocument } from './lib/export';
 import { parentDir } from './lib/text';
 
@@ -70,6 +71,11 @@ export function appCommands(): AppCommand[] {
       id: 'panel.frontmatter',
       title: 'Show frontmatter fields',
       run: () => useLayout.getState().showSidebarPanel('frontmatter'),
+    },
+    {
+      id: 'updates',
+      title: 'Check for updates',
+      run: () => void useUpdates.getState().check(),
     },
     {
       id: 'sidebar',

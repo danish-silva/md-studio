@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  check:
+  frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,3 +25,33 @@ jobs:
       # surviving the editor, nothing built on top of it is trustworthy.
       - name: Test
         run: npm test
+
+      - name: Build the frontend
+        run: npm run build
+
+  rust:
+    # Windows, because that is what the app ships on and what the filesystem layer is
+    # written against — path handling and the recycle bin behave differently elsewhere.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Formatting
+        working-directory: apps/desktop/src-tauri
+        run: cargo fmt --check
+
+      - name: Clippy
+        working-directory: apps/desktop/src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        working-directory: apps/desktop/src-tauri
+        run: cargo test

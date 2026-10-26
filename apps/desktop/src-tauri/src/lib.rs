@@ -7,14 +7,24 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
         // Remembers window size, position and monitor between launches.
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(Roots::default())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
-                    tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build(),
+                    tauri_plugin_log::Builder::default()
+                        .level(log::LevelFilter::Info)
+                        .build(),
                 )?;
+            }
+
+            // The updater refuses to start without an endpoint and a public key, which
+            // a build made without the signing secrets does not have. Registering it
+            // only when it is configured keeps those builds runnable.
+            if app.config().plugins.0.contains_key("updater") {
+                app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             }
 
             // Workspaces, drafts and settings live beside the app, not in the user's

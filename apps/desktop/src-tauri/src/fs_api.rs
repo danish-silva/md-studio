@@ -8,9 +8,9 @@
 use std::{
     collections::HashMap,
     fs,
-    sync::atomic::{AtomicU64, Ordering},
     path::{Component, Path, PathBuf},
     sync::Mutex,
+    sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -43,7 +43,11 @@ pub struct FsError {
 
 impl FsError {
     fn new(message: impl Into<String>) -> Self {
-        Self { message: message.into(), code: None, stat: None }
+        Self {
+            message: message.into(),
+            code: None,
+            stat: None,
+        }
     }
 
     fn stale(stat: FileStat) -> Self {
@@ -131,7 +135,9 @@ pub struct Roots {
 pub struct ConfigDir(pub PathBuf);
 
 fn to_millis(time: SystemTime) -> f64 {
-    time.duration_since(UNIX_EPOCH).map(|value| value.as_secs_f64() * 1000.0).unwrap_or(0.0)
+    time.duration_since(UNIX_EPOCH)
+        .map(|value| value.as_secs_f64() * 1000.0)
+        .unwrap_or(0.0)
 }
 
 fn stat_of(path: &Path) -> FsResult<FileStat> {
@@ -145,9 +151,9 @@ fn stat_of(path: &Path) -> FsResult<FileStat> {
 
 fn is_ignored(path: &Path) -> bool {
     path.components().any(|component| match component {
-        Component::Normal(name) => {
-            IGNORED.iter().any(|ignored| name.eq_ignore_ascii_case(ignored))
-        }
+        Component::Normal(name) => IGNORED
+            .iter()
+            .any(|ignored| name.eq_ignore_ascii_case(ignored)),
         _ => false,
     })
 }
@@ -155,7 +161,9 @@ fn is_ignored(path: &Path) -> bool {
 fn is_markdown(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
-        .map(|extension| extension.eq_ignore_ascii_case("md") || extension.eq_ignore_ascii_case("markdown"))
+        .map(|extension| {
+            extension.eq_ignore_ascii_case("md") || extension.eq_ignore_ascii_case("markdown")
+        })
         .unwrap_or(false)
 }
 
@@ -170,7 +178,10 @@ fn require_allowed(roots: &State<Roots>, candidate: &str) -> FsResult<PathBuf> {
     }
 
     let normalised = normalise(&path);
-    let granted = roots.paths.lock().map_err(|_| FsError::new("Root list is poisoned"))?;
+    let granted = roots
+        .paths
+        .lock()
+        .map_err(|_| FsError::new("Root list is poisoned"))?;
 
     let allowed = granted.iter().any(|root| {
         let root = normalise(root);
@@ -206,7 +217,10 @@ mod tests {
 
     #[test]
     fn normalise_resolves_dot_segments_without_touching_disk() {
-        assert_eq!(normalise(Path::new(r"C:\a\b\..\c")), PathBuf::from(r"C:\a\c"));
+        assert_eq!(
+            normalise(Path::new(r"C:\a\b\..\c")),
+            PathBuf::from(r"C:\a\c")
+        );
         assert_eq!(normalise(Path::new(r"C:\a\.\b")), PathBuf::from(r"C:\a\b"));
     }
 
@@ -239,8 +253,14 @@ mod tests {
 
 #[tauri::command]
 pub fn fs_roots(roots: State<Roots>) -> FsResult<Vec<String>> {
-    let granted = roots.paths.lock().map_err(|_| FsError::new("Root list is poisoned"))?;
-    Ok(granted.iter().map(|path| path.to_string_lossy().into_owned()).collect())
+    let granted = roots
+        .paths
+        .lock()
+        .map_err(|_| FsError::new("Root list is poisoned"))?;
+    Ok(granted
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect())
 }
 
 #[tauri::command]
@@ -251,7 +271,10 @@ pub fn fs_add_root(app: AppHandle, roots: State<Roots>, path: String) -> FsResul
     }
 
     {
-        let mut granted = roots.paths.lock().map_err(|_| FsError::new("Root list is poisoned"))?;
+        let mut granted = roots
+            .paths
+            .lock()
+            .map_err(|_| FsError::new("Root list is poisoned"))?;
         if !granted.contains(&target) {
             granted.push(target.clone());
         }
@@ -266,7 +289,10 @@ pub fn fs_remove_root(roots: State<Roots>, path: String) -> FsResult<Vec<String>
     let target = normalise(&PathBuf::from(&path));
 
     {
-        let mut granted = roots.paths.lock().map_err(|_| FsError::new("Root list is poisoned"))?;
+        let mut granted = roots
+            .paths
+            .lock()
+            .map_err(|_| FsError::new("Root list is poisoned"))?;
         granted.retain(|root| root != &target);
     }
     if let Ok(mut watchers) = roots.watchers.lock() {
@@ -277,7 +303,10 @@ pub fn fs_remove_root(roots: State<Roots>, path: String) -> FsResult<Vec<String>
 
 /// One watcher per root, forwarding to the window as `fs-event`.
 fn watch_root(app: &AppHandle, roots: &State<Roots>, root: &Path) -> FsResult<()> {
-    let mut watchers = roots.watchers.lock().map_err(|_| FsError::new("Watcher list is poisoned"))?;
+    let mut watchers = roots
+        .watchers
+        .lock()
+        .map_err(|_| FsError::new("Watcher list is poisoned"))?;
     if watchers.contains_key(root) {
         return Ok(());
     }
@@ -292,10 +321,18 @@ fn watch_root(app: &AppHandle, roots: &State<Roots>, root: &Path) -> FsResult<()
             }
             let kind = match event.kind {
                 notify::EventKind::Create(_) => {
-                    if path.is_dir() { "addDir" } else { "add" }
+                    if path.is_dir() {
+                        "addDir"
+                    } else {
+                        "add"
+                    }
                 }
                 notify::EventKind::Remove(_) => {
-                    if path.is_dir() { "unlinkDir" } else { "unlink" }
+                    if path.is_dir() {
+                        "unlinkDir"
+                    } else {
+                        "unlink"
+                    }
                 }
                 notify::EventKind::Modify(_) => "change",
                 _ => continue,
@@ -303,7 +340,10 @@ fn watch_root(app: &AppHandle, roots: &State<Roots>, root: &Path) -> FsResult<()
 
             let _ = handle.emit(
                 "fs-event",
-                WatchEvent { event: kind.into(), path: path.to_string_lossy().into_owned() },
+                WatchEvent {
+                    event: kind.into(),
+                    path: path.to_string_lossy().into_owned(),
+                },
             );
         }
     })?;
@@ -353,7 +393,11 @@ pub fn fs_read_file(roots: State<Roots>, path: String) -> FsResult<FileContents>
     let file = require_allowed(&roots, &path)?;
     let text = fs::read_to_string(&file)?;
     let stat = stat_of(&file)?;
-    Ok(FileContents { path: file.to_string_lossy().into_owned(), text, stat })
+    Ok(FileContents {
+        path: file.to_string_lossy().into_owned(),
+        text,
+        stat,
+    })
 }
 
 #[tauri::command]
@@ -370,12 +414,10 @@ pub fn fs_write_file(
 ) -> FsResult<FileStat> {
     let file = require_allowed(&roots, &path)?;
 
-    if let Some(expected) = expected_mtime_ms {
-        if let Ok(current) = stat_of(&file) {
-            // mtime carries sub-millisecond noise across a JSON round trip.
-            if (current.mtime_ms - expected).abs() > 1.0 {
-                return Err(FsError::stale(current));
-            }
+    if let (Some(expected), Ok(current)) = (expected_mtime_ms, stat_of(&file)) {
+        // mtime carries sub-millisecond noise across a JSON round trip.
+        if (current.mtime_ms - expected).abs() > 1.0 {
+            return Err(FsError::stale(current));
         }
     }
 
@@ -386,10 +428,15 @@ pub fn fs_write_file(
 /// Write to a sibling temp file and rename, so a crash mid-write cannot truncate a
 /// document. On Windows, rename replaces an existing destination.
 fn write_atomically(file: &Path, bytes: &[u8]) -> FsResult<()> {
-    let parent = file.parent().ok_or_else(|| FsError::new("File has no parent folder"))?;
+    let parent = file
+        .parent()
+        .ok_or_else(|| FsError::new("File has no parent folder"))?;
     fs::create_dir_all(parent)?;
 
-    let name = file.file_name().and_then(|name| name.to_str()).unwrap_or("file");
+    let name = file
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("file");
     let ticket = WRITE_COUNTER.fetch_add(1, Ordering::Relaxed);
     let temp = parent.join(format!(".{name}.{}.{ticket}.tmp", std::process::id()));
 
@@ -426,11 +473,25 @@ fn safe_asset_name(raw: &str) -> String {
     let base = raw.rsplit(['/', '\\']).next().unwrap_or("");
     let cleaned: String = base
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
 
-    let trimmed = cleaned.trim_start_matches(['-', '.']).chars().take(120).collect::<String>();
-    if trimmed.is_empty() { "image.png".into() } else { trimmed }
+    let trimmed = cleaned
+        .trim_start_matches(['-', '.'])
+        .chars()
+        .take(120)
+        .collect::<String>();
+    if trimmed.is_empty() {
+        "image.png".into()
+    } else {
+        trimmed
+    }
 }
 
 /// Two screenshots pasted in a row must not overwrite one another.
@@ -468,7 +529,10 @@ fn require_allowed_or_picked(roots: &State<Roots>, candidate: &str) -> FsResult<
     }
 
     let normalised = normalise(&PathBuf::from(candidate));
-    let mut picked = roots.picked.lock().map_err(|_| FsError::new("Picked list is poisoned"))?;
+    let mut picked = roots
+        .picked
+        .lock()
+        .map_err(|_| FsError::new("Picked list is poisoned"))?;
 
     match picked.iter().position(|path| path == &normalised) {
         Some(index) => {
@@ -505,7 +569,10 @@ pub fn git_run(roots: State<Roots>, cwd: String, args: Vec<String>) -> FsResult<
     }
 
     for arg in &args {
-        if GIT_ESCAPES.iter().any(|escape| arg == escape || arg.starts_with(&format!("{escape}="))) {
+        if GIT_ESCAPES
+            .iter()
+            .any(|escape| arg == escape || arg.starts_with(&format!("{escape}=")))
+        {
             return Err(FsError::new(format!("Refusing git argument: {arg}")));
         }
     }
@@ -554,7 +621,9 @@ pub async fn save_dialog(app: AppHandle, options: SaveOptions) -> FsResult<Optio
             let _ = sender.send(picked);
         });
 
-    let chosen = receiver.recv().map_err(|error| FsError::new(error.to_string()))?;
+    let chosen = receiver
+        .recv()
+        .map_err(|error| FsError::new(error.to_string()))?;
     let Some(path) = chosen.and_then(|path| path.into_path().ok()) else {
         return Ok(None);
     };
@@ -618,7 +687,10 @@ pub fn fs_trash(roots: State<Roots>, path: String) -> FsResult<()> {
 #[tauri::command]
 pub fn fs_find_files(roots: State<Roots>, limit: Option<usize>) -> FsResult<Vec<String>> {
     let granted = {
-        let paths = roots.paths.lock().map_err(|_| FsError::new("Root list is poisoned"))?;
+        let paths = roots
+            .paths
+            .lock()
+            .map_err(|_| FsError::new("Root list is poisoned"))?;
         paths.clone()
     };
 
@@ -626,7 +698,10 @@ pub fn fs_find_files(roots: State<Roots>, limit: Option<usize>) -> FsResult<Vec<
     let mut files = Vec::new();
 
     for root in granted {
-        for entry in WalkDir::new(&root).into_iter().filter_entry(|e| !is_ignored(e.path())) {
+        for entry in WalkDir::new(&root)
+            .into_iter()
+            .filter_entry(|e| !is_ignored(e.path()))
+        {
             if files.len() >= cap {
                 break;
             }
@@ -654,10 +729,17 @@ pub fn fs_search_content(
     options: SearchOptions,
 ) -> FsResult<ContentSearchResult> {
     if options.query.is_empty() {
-        return Ok(ContentSearchResult { matches: Vec::new(), truncated: false });
+        return Ok(ContentSearchResult {
+            matches: Vec::new(),
+            truncated: false,
+        });
     }
 
-    let source = if options.regex { options.query.clone() } else { regex::escape(&options.query) };
+    let source = if options.regex {
+        options.query.clone()
+    } else {
+        regex::escape(&options.query)
+    };
     let pattern = RegexBuilder::new(&source)
         .case_insensitive(!options.case_sensitive)
         .build()
@@ -670,7 +752,9 @@ pub fn fs_search_content(
         if matches.len() >= cap {
             break;
         }
-        let Ok(text) = fs::read_to_string(&file) else { continue };
+        let Ok(text) = fs::read_to_string(&file) else {
+            continue;
+        };
 
         for (index, line) in text.lines().enumerate() {
             for found in pattern.find_iter(line) {
@@ -707,7 +791,9 @@ pub fn fs_search_content(
 fn config_path(dir: &ConfigDir, name: &str) -> FsResult<PathBuf> {
     let valid = !name.is_empty()
         && !name.contains("..")
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-');
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-');
 
     if !valid {
         return Err(FsError::new(format!("Not a valid config name: {name}")));
@@ -720,7 +806,9 @@ pub fn config_read(dir: State<ConfigDir>, name: String) -> FsResult<Option<Strin
     let file = config_path(&dir, &name)?;
     // Editors and shells like to add a BOM. JSON parsing does not tolerate one, so strip
     // it here rather than let three stray bytes look like a corrupt workspace.
-    Ok(fs::read_to_string(file).ok().map(|text| text.trim_start_matches('\u{feff}').to_string()))
+    Ok(fs::read_to_string(file)
+        .ok()
+        .map(|text| text.trim_start_matches('\u{feff}').to_string()))
 }
 
 #[tauri::command]
@@ -740,7 +828,9 @@ pub fn config_delete(dir: State<ConfigDir>, name: String) -> FsResult<()> {
 
 #[tauri::command]
 pub fn config_list(dir: State<ConfigDir>, prefix: String) -> FsResult<Vec<String>> {
-    let Ok(entries) = fs::read_dir(&dir.0) else { return Ok(Vec::new()) };
+    let Ok(entries) = fs::read_dir(&dir.0) else {
+        return Ok(Vec::new());
+    };
 
     Ok(entries
         .filter_map(|entry| entry.ok())
@@ -760,7 +850,10 @@ pub async fn pick_folder(app: AppHandle) -> FsResult<Option<String>> {
         let _ = sender.send(picked);
     });
 
-    let picked = receiver.recv().map_err(|error| FsError::new(error.to_string()))?;
-    Ok(picked.and_then(|path| path.into_path().ok()).map(|path| path.to_string_lossy().into_owned()))
+    let picked = receiver
+        .recv()
+        .map_err(|error| FsError::new(error.to_string()))?;
+    Ok(picked
+        .and_then(|path| path.into_path().ok())
+        .map(|path| path.to_string_lossy().into_owned()))
 }
-

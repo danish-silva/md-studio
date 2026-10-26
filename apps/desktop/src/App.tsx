@@ -13,6 +13,7 @@ import { useDocuments } from './state/documents';
 import { useFind } from './state/find';
 import { useLayout } from './state/layout';
 import { useSettings } from './state/settings';
+import { useUpdates } from './state/updates';
 import { startWatching } from './state/watcher';
 import { useWorkspace } from './state/workspace';
 
@@ -28,6 +29,7 @@ export function App() {
   const busy = useDocuments((state) => state.busy);
   const error = useDocuments((state) => state.error);
   const notice = useDocuments((state) => state.notice);
+  const updates = useUpdates();
 
   const pendingDrafts = useWorkspace((state) => state.pendingDrafts);
   const droppedTabs = useWorkspace((state) => state.droppedTabs);
@@ -197,6 +199,41 @@ export function App() {
               onKeep={() => void useWorkspace.getState().resolveDrafts('keep')}
               onDiscard={() => void useWorkspace.getState().resolveDrafts('discard')}
             />
+          )}
+
+          {updates.status === 'available' && (
+            <div
+              role="alert"
+              className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--app-accent)]/50 bg-[var(--app-accent-soft)] px-4 py-2 text-sm"
+            >
+              <span>Version {updates.version} is available.</span>
+              <span className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void useUpdates.getState().install()}
+                  className="rounded border border-[var(--app-accent)]/60 px-2 py-0.5 text-xs hover:bg-[var(--app-hover)]"
+                >
+                  Install and restart
+                </button>
+                <button
+                  type="button"
+                  onClick={() => useUpdates.getState().dismiss()}
+                  className="rounded px-2 py-0.5 text-xs text-[var(--app-muted)] hover:bg-[var(--app-hover)]"
+                >
+                  Not now
+                </button>
+              </span>
+            </div>
+          )}
+
+          {updates.status === 'installing' && (
+            <Notice onDismiss={() => useUpdates.getState().dismiss()}>
+              Downloading the update. The app will restart when it is ready.
+            </Notice>
+          )}
+
+          {updates.message !== null && (
+            <Notice onDismiss={() => useUpdates.getState().dismiss()}>{updates.message}</Notice>
           )}
 
           {notice !== null && (

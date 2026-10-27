@@ -24,7 +24,8 @@ pub fn run() {
             // a build made without the signing secrets does not have. Registering it
             // only when it is configured keeps those builds runnable.
             if app.config().plugins.0.contains_key("updater") {
-                app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
             }
 
             // Workspaces, drafts and settings live beside the app, not in the user's
